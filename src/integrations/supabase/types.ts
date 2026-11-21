@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_profiles: {
+        Row: {
+          avatar_url: string | null
+          display_name: string
+          updated_at: string
+          username: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          display_name?: string
+          updated_at?: string
+          username: string
+        }
+        Update: {
+          avatar_url?: string | null
+          display_name?: string
+          updated_at?: string
+          username?: string
+        }
+        Relationships: []
+      }
       student_forum_events: {
         Row: {
           club_slug: string
@@ -29,6 +50,8 @@ export type Database = {
           report_file_name: string
           report_object_path: string
           resource_persons: string
+          submitter_email: string | null
+          submitter_name: string | null
         }
         Insert: {
           club_slug: string
@@ -44,6 +67,8 @@ export type Database = {
           report_file_name: string
           report_object_path: string
           resource_persons: string
+          submitter_email?: string | null
+          submitter_name?: string | null
         }
         Update: {
           club_slug?: string
@@ -59,6 +84,8 @@ export type Database = {
           report_file_name?: string
           report_object_path?: string
           resource_persons?: string
+          submitter_email?: string | null
+          submitter_name?: string | null
         }
         Relationships: []
       }

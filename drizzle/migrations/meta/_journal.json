@@ -15,6 +15,27 @@
       "when": 1795157379160,
       "tag": "0001_allow_open_student_event_submissions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795228516148,
+      "tag": "0002_capture_submitter_contact_and_public_event_summaries",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795228567837,
+      "tag": "0003_store_gnits_admin_profile",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795228654389,
+      "tag": "0004_route_event_submissions_through_validation",
+      "breakpoints": true
     }
   ]
 }

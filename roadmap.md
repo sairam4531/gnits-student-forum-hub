@@ -1,4 +1,4 @@
 - [ ] Build the GNITS Student Forums home, six clubs, and supplied-photo carousel.
-- [ ] Add all named forums and subclubs, event submission form, and saved file/report records.
-- [ ] Add secure admin sign-in, submitted-event review, downloads, and Excel export.
+- [ ] Add all named forums and subclubs, event submission with student name/email, and saved file/report records.
+- [ ] Add secure admin sign-in, profile details, submitted-event review, downloads, and Excel export.
 - [ ] Verify the user submission and admin review flows, responsive layout, route metadata, and tests.

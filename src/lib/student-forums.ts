@@ -55,11 +55,29 @@ export function toSlug(label: string) {
     .replace(/^-|-$/g, "");
 }
 
+export function forumSlug(clubSlug: string, forumName: string) {
+  if (
+    clubSlug === "innovation-incubation-cell" ||
+    clubSlug === "research-development-cell" ||
+    clubSlug === "women-protection-abhaya"
+  ) {
+    return clubSlug;
+  }
+  if (clubSlug === "outreach-events" && forumName === "Environmental Club (Unnat Bharat Abhiyan)") {
+    return "environmental-club";
+  }
+  return toSlug(forumName);
+}
+
 export function findClub(clubSlug: string) {
   return forums.find((club) => club.slug === clubSlug);
 }
 
 export function findForum(clubSlug: string, forumSlug: string) {
   const club = findClub(clubSlug);
-  return club?.forums.find((forum) => toSlug(forum) === forumSlug);
+  return club?.forums.find((forum) => forumSlugForClub(clubSlug, forum) === forumSlug);
+}
+
+function forumSlugForClub(clubSlug: string, forumName: string) {
+  return forumSlug(clubSlug, forumName);
 }

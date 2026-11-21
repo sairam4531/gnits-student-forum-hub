@@ -28,3 +28,8 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+## GNITS portal decisions
+- Verify the temporary administrator credentials only in server functions and keep them out of browser code; admin access uses an encrypted, HTTP-only session cookie.
+- Public event browsing exposes only event titles and dates; submitter contact details and private-file links stay behind server-verified admin access.
+- Keep administrator display-name and avatar details in a service-role-only profile table, separate from the temporary login credentials.
