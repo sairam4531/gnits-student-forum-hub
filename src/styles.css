@@ -155,8 +155,12 @@
 }
 
 @keyframes forum-marquee {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
 }
 
 .forum-marquee-track {
@@ -169,6 +173,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .forum-marquee-track { animation: none; }
-  *, *::before, *::after { scroll-behavior: auto !important; }
+  .forum-marquee-track {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
 }

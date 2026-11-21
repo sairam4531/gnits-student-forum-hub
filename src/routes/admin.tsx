@@ -1,0 +1,429 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useState, useEffect, useRef } from "react";
+import {
+  ShieldCheck,
+  Lock,
+  User,
+  Eye,
+  EyeOff,
+  LogOut,
+  Settings,
+  Sparkles,
+  Loader2,
+  AlertCircle,
+  FileSpreadsheet,
+} from "lucide-react";
+import { Header } from "@/components/Header";
+import { ForumCarousel } from "@/components/ForumCarousel";
+import { ClubNavigation } from "@/components/ClubNavigation";
+import { AdminEventsView } from "@/components/AdminEventsView";
+import { AdminProfileModal } from "@/components/AdminProfileModal";
+import {
+  adminLoginServerFn,
+  getAdminSessionServerFn,
+  adminLogoutServerFn,
+  getAdminProfileServerFn,
+  getAllAdminEventsServerFn,
+  type AdminProfileRecord,
+} from "@/lib/admin.functions";
+import { type ForumClub } from "@/lib/student-forums";
+import * as XLSX from "xlsx";
+
+export const Route = createFileRoute("/admin")({
+  component: AdminPage,
+});
+
+function AdminPage() {
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Login form state
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
+
+  // Admin Profile state
+  const [adminProfile, setAdminProfile] = useState<AdminProfileRecord | null>(null);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
+  // Forum selection state
+  const [selectedClub, setSelectedClub] = useState<ForumClub | null>(null);
+  const [selectedForumName, setSelectedForumName] = useState<string | null>(null);
+  const [selectedForumSlug, setSelectedForumSlug] = useState<string | null>(null);
+
+  const adminEventsRef = useRef<HTMLDivElement>(null);
+
+  // Check initial session
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const session = await getAdminSessionServerFn();
+        if (session.authenticated) {
+          setIsAuthenticated(true);
+          // Load admin profile
+          const profile = await getAdminProfileServerFn();
+          setAdminProfile(profile);
+        }
+      } catch (err) {
+        console.warn("Session check note:", err);
+      } finally {
+        setCheckingSession(false);
+      }
+    }
+    checkAuth();
+  }, []);
+
+  // Handle Login
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+    setLoginLoading(true);
+
+    try {
+      const res = await adminLoginServerFn({
+        data: {
+          username: username.trim(),
+          password,
+        },
+      });
+
+      if (res.success) {
+        setIsAuthenticated(true);
+        const profile = await getAdminProfileServerFn();
+        setAdminProfile(profile);
+      }
+    } catch (err: unknown) {
+      setLoginError(err instanceof Error ? err.message : "Invalid credentials.");
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  // Handle Logout
+  const handleLogout = async () => {
+    try {
+      await adminLogoutServerFn();
+    } catch (err) {
+      console.warn("Logout note:", err);
+    }
+    setIsAuthenticated(false);
+    setAdminProfile(null);
+    setSelectedClub(null);
+    setSelectedForumName(null);
+    setSelectedForumSlug(null);
+  };
+
+  const handleSelectClub = (club: ForumClub) => {
+    setSelectedClub(club);
+    if (club.forums.length === 1 && club.forums[0]) {
+      const singleForum = club.forums[0];
+      setSelectedForumName(singleForum);
+      setSelectedForumSlug(club.slug);
+      setTimeout(() => {
+        adminEventsRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+    } else {
+      setSelectedForumName(null);
+      setSelectedForumSlug(null);
+    }
+  };
+
+  const handleSelectForum = (club: ForumClub, forumName: string, forumSlug: string) => {
+    setSelectedClub(club);
+    setSelectedForumName(forumName);
+    setSelectedForumSlug(forumSlug);
+    setTimeout(() => {
+      adminEventsRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, 100);
+  };
+
+  // Export Complete Global Portal Master Excel
+  const handleExportMasterExcel = async () => {
+    try {
+      const allEvents = await getAllAdminEventsServerFn();
+      if (!allEvents || allEvents.length === 0) {
+        alert("No submitted events available for export.");
+        return;
+      }
+
+      const rows = allEvents.map((ev, i) => ({
+        "S.No": i + 1,
+        "Event ID": ev.id,
+        "Event Name": ev.event_name,
+        "Club Slug": ev.club_slug,
+        "Forum Slug": ev.forum_slug,
+        "From Date": ev.event_start,
+        "To Date": ev.event_end,
+        "Resource Persons": ev.resource_persons,
+        "Submitter Name": ev.submitter_name || "N/A",
+        "Submitter Email": ev.submitter_email || "N/A",
+        "Report File": ev.report_file_name,
+        "Photos Count": ev.photo_file_names?.length || 0,
+        "Submitted At": new Date(ev.created_at).toLocaleString(),
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "All Forum Events");
+      worksheet["!cols"] = Object.keys(rows[0] || {}).map(() => ({ wch: 25 }));
+      XLSX.writeFile(
+        workbook,
+        `GNITS_Student_Council_Master_Report_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      );
+    } catch (err: unknown) {
+      alert("Failed to export Excel: " + (err instanceof Error ? err.message : "Error"));
+    }
+  };
+
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <span className="text-sm font-semibold">Verifying secure administrator session...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // If Not Authenticated -> Show Admin Login Form
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex flex-col bg-background text-foreground">
+        <Header isAdmin />
+
+        <div className="flex-1 flex items-center justify-center p-4 sm:p-6 lg:p-8">
+          <div className="w-full max-w-md rounded-3xl border border-border bg-card p-8 shadow-2xl animate-in fade-in duration-300">
+            {/* Header Badge & Title */}
+            <div className="text-center">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4 shadow-sm">
+                <ShieldCheck className="h-8 w-8" />
+              </div>
+              <span className="text-xs font-bold uppercase tracking-widest text-primary">
+                Council Administration
+              </span>
+              <h2 className="text-2xl font-black text-foreground mt-1">Admin Portal Login</h2>
+              <p className="text-xs sm:text-sm text-muted-foreground mt-1.5">
+                Sign in with council credentials to review submitted event reports and download
+                Excel archives.
+              </p>
+            </div>
+
+            {loginError && (
+              <div className="mt-5 rounded-xl bg-destructive/10 p-3.5 text-xs sm:text-sm text-destructive border border-destructive/20 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                <span>{loginError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleLogin} className="mt-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-foreground mb-1.5">
+                  Username
+                </label>
+                <div className="relative">
+                  <User className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="text"
+                    required
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="studentcouncil"
+                    className="w-full rounded-xl border border-input bg-background pl-10 pr-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-foreground mb-1.5">
+                  Password
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••••••"
+                    className="w-full rounded-xl border border-input bg-background pl-10 pr-10 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-3 text-muted-foreground hover:text-foreground"
+                    title={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={loginLoading}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground shadow-md hover:bg-primary/90 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {loginLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Verifying credentials...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="h-4 w-4" />
+                      <span>Sign In as Admin</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Quick Fill Credentials Helper Button */}
+              <div className="pt-3 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUsername("studentcouncil");
+                    setPassword("studentcouncil@1234");
+                  }}
+                  className="text-xs text-primary font-medium hover:underline inline-flex items-center gap-1"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>Auto-fill Demo Credentials</span>
+                </button>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Default credentials: <code>studentcouncil</code> /{" "}
+                  <code>studentcouncil@1234</code>
+                </p>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Authenticated Admin Dashboard
+  return (
+    <div className="min-h-screen flex flex-col bg-background text-foreground antialiased selection:bg-primary/20">
+      {/* Top Header */}
+      <Header isAdmin />
+
+      {/* Admin Action Sub-Bar */}
+      <div className="border-b border-border/80 bg-muted/40 py-2.5 px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground font-black text-xs shadow-sm">
+              {adminProfile?.avatar_url ? (
+                <img
+                  src={adminProfile.avatar_url}
+                  alt="Admin"
+                  className="h-full w-full object-cover rounded-xl"
+                />
+              ) : (
+                "SC"
+              )}
+            </div>
+            <div>
+              <span className="text-xs sm:text-sm font-bold text-foreground block">
+                {adminProfile?.display_name || "GNITS Student Council"}
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                Signed in as @{adminProfile?.username || "studentcouncil"}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleExportMasterExcel}
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-emerald-600/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 transition-colors shadow-sm"
+              title="Download Master Excel Report of all campus events"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              <span>Master Excel Export</span>
+            </button>
+
+            {adminProfile && (
+              <button
+                type="button"
+                onClick={() => setIsProfileModalOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted transition-colors shadow-sm"
+                title="Edit administrator display name & avatar"
+              >
+                <Settings className="h-3.5 w-3.5 text-muted-foreground" />
+                <span>Profile</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/20 transition-colors"
+              title="Sign out of admin session"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              <span>Sign Out</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 5-Image Continuous Video Reel Marquee Carousel as requested on Admin page */}
+      <ForumCarousel />
+
+      {/* Main Content Area */}
+      <main className="flex-1 pb-16">
+        {/* Six Clubs Layout: 3 on one side, 3 on the other side */}
+        <ClubNavigation
+          selectedClub={selectedClub}
+          selectedForum={selectedForumSlug}
+          onSelectClub={handleSelectClub}
+          onSelectForum={handleSelectForum}
+          isAdmin
+        />
+
+        {/* Submitted Events from user side displayed when forum is selected */}
+        {selectedClub && selectedForumName && selectedForumSlug && (
+          <div ref={adminEventsRef} className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <AdminEventsView
+              club={selectedClub}
+              forumName={selectedForumName}
+              forumSlug={selectedForumSlug}
+              onClose={() => {
+                setSelectedForumName(null);
+                setSelectedForumSlug(null);
+              }}
+            />
+          </div>
+        )}
+      </main>
+
+      {/* Admin Profile Modal */}
+      {adminProfile && (
+        <AdminProfileModal
+          profile={adminProfile}
+          isOpen={isProfileModalOpen}
+          onClose={() => setIsProfileModalOpen(false)}
+          onProfileUpdated={(updated) => setAdminProfile(updated)}
+        />
+      )}
+
+      {/* Footer */}
+      <footer className="border-t border-border/80 bg-card/60 py-6">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center text-xs text-muted-foreground">
+          <p className="font-semibold text-foreground">
+            GNITS Student Council • Administrative Control Panel
+          </p>
+          <p className="text-[11px] mt-1">
+            Protected with HTTP-only encrypted session cookies and server-verified data boundaries.
+          </p>
+        </div>
+      </footer>
+    </div>
+  );
+}

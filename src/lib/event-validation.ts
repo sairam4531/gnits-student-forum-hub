@@ -18,16 +18,22 @@ function addEventDetailsIssues(
   context: z.RefinementCtx,
 ) {
   if (event.eventStart > event.eventEnd) {
-    context.addIssue({ code: "custom", path: ["eventEnd"], message: "The end date must be on or after the start date." });
+    context.addIssue({
+      code: "custom",
+      path: ["eventEnd"],
+      message: "The end date must be on or after the start date.",
+    });
   }
   if (!isKnownForum(event.clubSlug, event.forumSlug)) {
-    context.addIssue({ code: "custom", path: ["forumSlug"], message: "Choose a forum from the GNITS list." });
+    context.addIssue({
+      code: "custom",
+      path: ["forumSlug"],
+      message: "Choose a forum from the GNITS list.",
+    });
   }
 }
 
-export const eventDetailsSchema = z
-  .object(eventDetailsShape)
-  .superRefine(addEventDetailsIssues);
+export const eventDetailsSchema = z.object(eventDetailsShape).superRefine(addEventDetailsIssues);
 
 export const eventSubmissionSchema = z
   .object({
@@ -37,11 +43,17 @@ export const eventSubmissionSchema = z
     reportContentType: z.string().max(150),
     photoObjectPaths: z.array(z.string().min(1).max(500)).max(20),
     photoFileNames: z.array(z.string().trim().min(1).max(180)).max(20),
+    reportBase64: z.string().optional(),
+    photoBase64s: z.array(z.string()).optional(),
   })
   .superRefine((event, context) => {
     addEventDetailsIssues(event, context);
     if (event.photoObjectPaths.length !== event.photoFileNames.length) {
-      context.addIssue({ code: "custom", path: ["photoFileNames"], message: "Each photo must have a matching file name." });
+      context.addIssue({
+        code: "custom",
+        path: ["photoFileNames"],
+        message: "Each photo must have a matching file name.",
+      });
     }
     const paths = [event.reportObjectPath, ...event.photoObjectPaths];
     const submissionFolders = new Set(paths.map((path) => path.split("/").slice(0, 2).join("/")));
@@ -50,7 +62,11 @@ export const eventSubmissionSchema = z
       submissionFolders.size !== 1 ||
       !isSupportedReport({ name: event.reportFileName, type: event.reportContentType })
     ) {
-      context.addIssue({ code: "custom", path: ["reportObjectPath"], message: "The uploaded files are not valid submission files." });
+      context.addIssue({
+        code: "custom",
+        path: ["reportObjectPath"],
+        message: "The uploaded files are not valid submission files.",
+      });
     }
   });
 
