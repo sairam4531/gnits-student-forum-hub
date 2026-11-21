@@ -33,6 +33,33 @@ function createPublicClient(url: string, key: string) {
   });
 }
 
+export interface PublicEventRecord {
+  id: string;
+  club_slug: string;
+  forum_slug: string;
+  event_name: string;
+  event_start: string;
+  event_end: string;
+  created_at: string;
+  resource_persons?: string;
+}
+
+export const getAllPublicEventsServerFn = createServerFn({ method: "GET" }).handler(
+  async (): Promise<PublicEventRecord[]> => {
+    const all = getLocalEvents();
+    return all.map((e) => ({
+      id: e.id,
+      club_slug: e.club_slug,
+      forum_slug: e.forum_slug,
+      event_name: e.event_name,
+      event_start: e.event_start,
+      event_end: e.event_end,
+      created_at: e.created_at,
+      resource_persons: e.resource_persons,
+    }));
+  },
+);
+
 export const getPublicForumEvents = createServerFn({ method: "GET" })
   .validator((input) => publicForumInput.parse(input))
   .handler(async ({ data }) => {

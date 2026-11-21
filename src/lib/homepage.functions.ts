@@ -1,0 +1,358 @@
+import { createServerFn } from "@tanstack/react-start";
+import { getCookie } from "@tanstack/react-start/server";
+import { z } from "zod";
+import crypto from "node:crypto";
+import {
+  getHomepageStore,
+  saveHomepageStore,
+  saveUploadedMedia,
+  type HomepagePhoto,
+  type HomepageVideo,
+  type DeanDetails,
+} from "@/lib/local-homepage-store";
+
+const SESSION_COOKIE_NAME = "gnits_admin_session";
+const SESSION_SECRET =
+  process.env["ADMIN_SESSION_SECRET"] || "gnits-student-council-secure-session-key-2026";
+
+function verifyAdminSession(token: string | undefined): boolean {
+  if (!token) return false;
+  const parts = token.split(".");
+  if (parts.length !== 2) return false;
+  const [data, sig] = parts;
+  if (!data || !sig) return false;
+
+  const expectedSig = crypto.createHmac("sha256", SESSION_SECRET).update(data).digest("base64url");
+  if (sig.length !== expectedSig.length) return false;
+  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) return false;
+
+  try {
+    const payload = JSON.parse(Buffer.from(data, "base64url").toString("utf-8")) as {
+      username: string;
+      exp: number;
+    };
+    return !payload.exp || Date.now() <= payload.exp;
+  } catch {
+    return false;
+  }
+}
+
+// -------------------------------------------------------------
+// PUBLIC HOMEPAGE DATA
+// -------------------------------------------------------------
+export const getPublicHomepageDataServerFn = createServerFn({ method: "GET" }).handler(
+  async () => {
+    const store = getHomepageStore();
+    const activePhotos = store.photos.filter((p) => p.is_active);
+    const featuredPhotos = activePhotos
+      .filter((p) => p.is_featured)
+      .sort((a, b) => a.display_order - b.display_order);
+
+    // If no photos explicitly featured, take the top 2 active photos
+    const displayPhotos = featuredPhotos.length > 0 ? featuredPhotos.slice(0, 4) : activePhotos.slice(0, 4);
+
+    const featuredVideo =
+      store.videos.find((v) => v.is_active && v.is_featured) ||
+      store.videos.find((v) => v.is_active) ||
+      null;
+
+    return {
+      photos: activePhotos,
+      featuredPhotos: displayPhotos,
+      featuredVideo,
+      dean: store.dean,
+    };
+  },
+);
+
+export const getAllPublicPhotosServerFn = createServerFn({ method: "GET" }).handler(
+  async () => {
+    const store = getHomepageStore();
+    return store.photos
+      .filter((p) => p.is_active)
+      .sort((a, b) => a.display_order - b.display_order);
+  },
+);
+
+// -------------------------------------------------------------
+// ADMIN HOMEPAGE DATA & MANAGEMENT
+// -------------------------------------------------------------
+export const getAdminHomepageDataServerFn = createServerFn({ method: "GET" }).handler(
+  async () => {
+    const sessionToken = getCookie(SESSION_COOKIE_NAME);
+    if (!verifyAdminSession(sessionToken)) {
+      throw new Error("Unauthorized administrator access.");
+    }
+    return getHomepageStore();
+  },
+);
+
+// Photo CRUD
+const PhotoInputSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().min(1, "Title is required"),
+  description: z.string().optional(),
+  category: z.string().default("Campus"),
+  is_active: z.boolean().default(true),
+  is_featured: z.boolean().default(false),
+  display_order: z.number().default(0),
+  image_url: z.string().optional(),
+  imageBase64: z.string().optional(),
+  imageFileName: z.string().optional(),
+});
+
+export const savePhotoAdminServerFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => PhotoInputSchema.parse(d))
+  .handler(async ({ data }) => {
+    const sessionToken = getCookie(SESSION_COOKIE_NAME);
+    if (!verifyAdminSession(sessionToken)) {
+      throw new Error("Unauthorized administrator access.");
+    }
+
+    const store = getHomepageStore();
+    let finalImageUrl = data.image_url || "";
+
+    if (data.imageBase64 && data.imageFileName) {
+      finalImageUrl = saveUploadedMedia("photos", data.imageFileName, data.imageBase64);
+    }
+
+    if (!finalImageUrl) {
+      finalImageUrl = "/assets/student-forum-dance-01.jpg";
+    }
+
+    const now = new Date().toISOString();
+
+    if (data.id) {
+      // Edit
+      const index = store.photos.findIndex((p) => p.id === data.id);
+      if (index === -1) throw new Error("Photo not found.");
+      store.photos[index] = {
+        ...store.photos[index]!,
+        title: data.title,
+        description: data.description || "",
+        category: data.category,
+        is_active: data.is_active,
+        is_featured: data.is_featured,
+        display_order: data.display_order,
+        image_url: finalImageUrl,
+        updated_at: now,
+      };
+    } else {
+      // Create new
+      const newPhoto: HomepagePhoto = {
+        id: `photo-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        title: data.title,
+        description: data.description || "",
+        category: data.category,
+        is_active: data.is_active,
+        is_featured: data.is_featured,
+        display_order: data.display_order || store.photos.length + 1,
+        image_url: finalImageUrl,
+        created_at: now,
+        updated_at: now,
+      };
+      store.photos.unshift(newPhoto);
+    }
+
+    saveHomepageStore(store);
+    return { success: true };
+  });
+
+export const deletePhotoAdminServerFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({ id: z.string() }).parse(d))
+  .handler(async ({ data }) => {
+    const sessionToken = getCookie(SESSION_COOKIE_NAME);
+    if (!verifyAdminSession(sessionToken)) {
+      throw new Error("Unauthorized administrator access.");
+    }
+
+    const store = getHomepageStore();
+    store.photos = store.photos.filter((p) => p.id !== data.id);
+    saveHomepageStore(store);
+    return { success: true };
+  });
+
+export const togglePhotoStatusServerFn = createServerFn({ method: "POST" })
+  .validator(
+    (d: unknown) =>
+      z
+        .object({
+          id: z.string(),
+          field: z.enum(["is_active", "is_featured"]),
+          value: z.boolean(),
+        })
+        .parse(d),
+  )
+  .handler(async ({ data }) => {
+    const sessionToken = getCookie(SESSION_COOKIE_NAME);
+    if (!verifyAdminSession(sessionToken)) {
+      throw new Error("Unauthorized administrator access.");
+    }
+
+    const store = getHomepageStore();
+    const photo = store.photos.find((p) => p.id === data.id);
+    if (photo) {
+      photo[data.field] = data.value;
+      photo.updated_at = new Date().toISOString();
+      saveHomepageStore(store);
+    }
+    return { success: true };
+  });
+
+// Video CRUD
+const VideoInputSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().min(1, "Title is required"),
+  description: z.string().optional(),
+  video_url: z.string().optional(),
+  videoBase64: z.string().optional(),
+  videoFileName: z.string().optional(),
+  thumbnail_url: z.string().optional(),
+  thumbnailBase64: z.string().optional(),
+  thumbnailFileName: z.string().optional(),
+  is_active: z.boolean().default(true),
+  is_featured: z.boolean().default(true),
+  display_order: z.number().default(0),
+});
+
+export const saveVideoAdminServerFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => VideoInputSchema.parse(d))
+  .handler(async ({ data }) => {
+    const sessionToken = getCookie(SESSION_COOKIE_NAME);
+    if (!verifyAdminSession(sessionToken)) {
+      throw new Error("Unauthorized administrator access.");
+    }
+
+    const store = getHomepageStore();
+    let finalVideoUrl = data.video_url || "";
+    let finalThumbnailUrl = data.thumbnail_url || "";
+
+    if (data.videoBase64 && data.videoFileName) {
+      finalVideoUrl = saveUploadedMedia("videos", data.videoFileName, data.videoBase64);
+    }
+
+    if (data.thumbnailBase64 && data.thumbnailFileName) {
+      finalThumbnailUrl = saveUploadedMedia("thumbnails", data.thumbnailFileName, data.thumbnailBase64);
+    }
+
+    if (!finalThumbnailUrl) {
+      finalThumbnailUrl = "/assets/student-affairs-reference.jpg";
+    }
+
+    if (!finalVideoUrl) {
+      finalVideoUrl =
+        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
+    }
+
+    const now = new Date().toISOString();
+
+    // If setting as featured, unfeature others
+    if (data.is_featured) {
+      store.videos.forEach((v) => {
+        v.is_featured = false;
+      });
+    }
+
+    if (data.id) {
+      const idx = store.videos.findIndex((v) => v.id === data.id);
+      if (idx === -1) throw new Error("Video not found.");
+      store.videos[idx] = {
+        ...store.videos[idx]!,
+        title: data.title,
+        description: data.description || "",
+        video_url: finalVideoUrl,
+        thumbnail_url: finalThumbnailUrl,
+        is_active: data.is_active,
+        is_featured: data.is_featured,
+        display_order: data.display_order,
+        updated_at: now,
+      };
+    } else {
+      const newVideo: HomepageVideo = {
+        id: `video-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        title: data.title,
+        description: data.description || "",
+        video_url: finalVideoUrl,
+        thumbnail_url: finalThumbnailUrl,
+        is_active: data.is_active,
+        is_featured: data.is_featured,
+        display_order: data.display_order || store.videos.length + 1,
+        created_at: now,
+        updated_at: now,
+      };
+      store.videos.unshift(newVideo);
+    }
+
+    saveHomepageStore(store);
+    return { success: true };
+  });
+
+export const deleteVideoAdminServerFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({ id: z.string() }).parse(d))
+  .handler(async ({ data }) => {
+    const sessionToken = getCookie(SESSION_COOKIE_NAME);
+    if (!verifyAdminSession(sessionToken)) {
+      throw new Error("Unauthorized administrator access.");
+    }
+
+    const store = getHomepageStore();
+    store.videos = store.videos.filter((v) => v.id !== data.id);
+    saveHomepageStore(store);
+    return { success: true };
+  });
+
+export const setFeaturedVideoAdminServerFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({ id: z.string() }).parse(d))
+  .handler(async ({ data }) => {
+    const sessionToken = getCookie(SESSION_COOKIE_NAME);
+    if (!verifyAdminSession(sessionToken)) {
+      throw new Error("Unauthorized administrator access.");
+    }
+
+    const store = getHomepageStore();
+    store.videos.forEach((v) => {
+      v.is_featured = v.id === data.id;
+    });
+    saveHomepageStore(store);
+    return { success: true };
+  });
+
+// Dean Details Update
+const DeanDetailsSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  designation: z.string().min(1, "Designation is required"),
+  email: z.string().email("Valid email is required"),
+  contact_number: z.string().min(1, "Contact number is required"),
+  profile_photo: z.string().optional(),
+  photoBase64: z.string().optional(),
+  photoFileName: z.string().optional(),
+});
+
+export const updateDeanDetailsAdminServerFn = createServerFn({ method: "POST" })
+  .validator((d: unknown) => DeanDetailsSchema.parse(d))
+  .handler(async ({ data }) => {
+    const sessionToken = getCookie(SESSION_COOKIE_NAME);
+    if (!verifyAdminSession(sessionToken)) {
+      throw new Error("Unauthorized administrator access.");
+    }
+
+    const store = getHomepageStore();
+    let finalPhotoUrl = data.profile_photo || store.dean.profile_photo || "";
+
+    if (data.photoBase64 && data.photoFileName) {
+      finalPhotoUrl = saveUploadedMedia("dean", data.photoFileName, data.photoBase64);
+    }
+
+    store.dean = {
+      id: store.dean.id || "dean-1",
+      name: data.name,
+      designation: data.designation,
+      email: data.email,
+      contact_number: data.contact_number,
+      profile_photo: finalPhotoUrl,
+      updated_at: new Date().toISOString(),
+    };
+
+    saveHomepageStore(store);
+    return { success: true, dean: store.dean };
+  });

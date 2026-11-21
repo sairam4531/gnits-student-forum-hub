@@ -12,12 +12,19 @@ import {
   Loader2,
   AlertCircle,
   FileSpreadsheet,
+  Image as ImageIcon,
+  Video as VideoIcon,
+  LayoutDashboard,
+  Calendar,
 } from "lucide-react";
 import { Header } from "@/components/Header";
 import { ForumCarousel } from "@/components/ForumCarousel";
 import { ClubNavigation } from "@/components/ClubNavigation";
 import { AdminEventsView } from "@/components/AdminEventsView";
 import { AdminProfileModal } from "@/components/AdminProfileModal";
+import { DailyPhotosManage } from "@/components/admin/DailyPhotosManage";
+import { CollegeVideosManage } from "@/components/admin/CollegeVideosManage";
+import { DeanDetailsManage } from "@/components/admin/DeanDetailsManage";
 import {
   adminLoginServerFn,
   getAdminSessionServerFn,
@@ -26,6 +33,10 @@ import {
   getAllAdminEventsServerFn,
   type AdminProfileRecord,
 } from "@/lib/admin.functions";
+import {
+  getAdminHomepageDataServerFn,
+} from "@/lib/homepage.functions";
+import type { HomepageDataStore } from "@/lib/local-homepage-store";
 import { type ForumClub } from "@/lib/student-forums";
 import * as XLSX from "xlsx";
 
@@ -48,12 +59,25 @@ function AdminPage() {
   const [adminProfile, setAdminProfile] = useState<AdminProfileRecord | null>(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
+  // Active Admin Tab
+  const [activeTab, setActiveTab] = useState<"events" | "photos" | "videos" | "dean">("events");
+  const [homepageData, setHomepageData] = useState<HomepageDataStore | null>(null);
+
   // Forum selection state
   const [selectedClub, setSelectedClub] = useState<ForumClub | null>(null);
   const [selectedForumName, setSelectedForumName] = useState<string | null>(null);
   const [selectedForumSlug, setSelectedForumSlug] = useState<string | null>(null);
 
   const adminEventsRef = useRef<HTMLDivElement>(null);
+
+  const loadHomepageData = async () => {
+    try {
+      const data = await getAdminHomepageDataServerFn();
+      if (data) setHomepageData(data);
+    } catch (err) {
+      console.warn("Could not load homepage data:", err);
+    }
+  };
 
   // Check initial session
   useEffect(() => {
@@ -62,9 +86,9 @@ function AdminPage() {
         const session = await getAdminSessionServerFn();
         if (session.authenticated) {
           setIsAuthenticated(true);
-          // Load admin profile
           const profile = await getAdminProfileServerFn();
           setAdminProfile(profile);
+          await loadHomepageData();
         }
       } catch (err) {
         console.warn("Session check note:", err);
@@ -93,6 +117,7 @@ function AdminPage() {
         setIsAuthenticated(true);
         const profile = await getAdminProfileServerFn();
         setAdminProfile(profile);
+        await loadHomepageData();
       }
     } catch (err: unknown) {
       setLoginError(err instanceof Error ? err.message : "Invalid credentials.");
@@ -206,8 +231,7 @@ function AdminPage() {
               </span>
               <h2 className="text-2xl font-black text-foreground mt-1">Admin Portal Login</h2>
               <p className="text-xs sm:text-sm text-muted-foreground mt-1.5">
-                Sign in with council credentials to review submitted event reports and download
-                Excel archives.
+                Sign in with council credentials to review submitted event reports and manage homepage content.
               </p>
             </div>
 
@@ -254,7 +278,6 @@ function AdminPage() {
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3.5 top-3 text-muted-foreground hover:text-foreground"
-                    title={showPassword ? "Hide password" : "Show password"}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -265,7 +288,7 @@ function AdminPage() {
                 <button
                   type="submit"
                   disabled={loginLoading}
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground shadow-md hover:bg-primary/90 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground shadow-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/40 disabled:opacity-50 flex items-center justify-center gap-2 transition-all cursor-pointer"
                 >
                   {loginLoading ? (
                     <>
@@ -281,7 +304,7 @@ function AdminPage() {
                 </button>
               </div>
 
-              {/* Quick Fill Credentials Helper Button */}
+              {/* Quick Fill Demo Credentials */}
               <div className="pt-3 text-center">
                 <button
                   type="button"
@@ -295,8 +318,7 @@ function AdminPage() {
                   <span>Auto-fill Demo Credentials</span>
                 </button>
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  Default credentials: <code>studentcouncil</code> /{" "}
-                  <code>studentcouncil@1234</code>
+                  Default credentials: <code>studentcouncil</code> / <code>studentcouncil@1234</code>
                 </p>
               </div>
             </form>
@@ -373,31 +395,121 @@ function AdminPage() {
         </div>
       </div>
 
-      {/* 5-Image Continuous Video Reel Marquee Carousel as requested on Admin page */}
-      <ForumCarousel />
+      {/* Admin Section Tabs Navigation Bar */}
+      <div className="border-b border-border bg-card">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-2 overflow-x-auto py-2.5">
+            <button
+              type="button"
+              onClick={() => setActiveTab("events")}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
+                activeTab === "events"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              <span>Submitted Events & Forums</span>
+            </button>
 
-      {/* Main Content Area */}
+            <button
+              type="button"
+              onClick={() => setActiveTab("photos")}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
+                activeTab === "photos"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              <ImageIcon className="h-4 w-4" />
+              <span>Daily Photos Management</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab("videos")}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
+                activeTab === "videos"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              <VideoIcon className="h-4 w-4" />
+              <span>College Video Management</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab("dean")}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
+                activeTab === "dean"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              <User className="h-4 w-4" />
+              <span>Dean Details Management</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content Area based on Tab */}
       <main className="flex-1 pb-16">
-        {/* Six Clubs Layout: 3 on one side, 3 on the other side */}
-        <ClubNavigation
-          selectedClub={selectedClub}
-          selectedForum={selectedForumSlug}
-          onSelectClub={handleSelectClub}
-          onSelectForum={handleSelectForum}
-          isAdmin
-        />
+        {activeTab === "events" && (
+          <div>
+            {/* 5-Image Continuous Video Reel Marquee Carousel */}
+            <ForumCarousel />
 
-        {/* Submitted Events from user side displayed when forum is selected */}
-        {selectedClub && selectedForumName && selectedForumSlug && (
-          <div ref={adminEventsRef} className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <AdminEventsView
-              club={selectedClub}
-              forumName={selectedForumName}
-              forumSlug={selectedForumSlug}
-              onClose={() => {
-                setSelectedForumName(null);
-                setSelectedForumSlug(null);
-              }}
+            {/* Six Clubs Layout: 3 on one side, 3 on the other side */}
+            <ClubNavigation
+              selectedClub={selectedClub}
+              selectedForum={selectedForumSlug}
+              onSelectClub={handleSelectClub}
+              onSelectForum={handleSelectForum}
+              isAdmin
+            />
+
+            {/* Submitted Events from user side displayed when forum is selected */}
+            {selectedClub && selectedForumName && selectedForumSlug && (
+              <div ref={adminEventsRef} className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-6">
+                <AdminEventsView
+                  club={selectedClub}
+                  forumName={selectedForumName}
+                  forumSlug={selectedForumSlug}
+                  onClose={() => {
+                    setSelectedForumName(null);
+                    setSelectedForumSlug(null);
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "photos" && (
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-8">
+            <DailyPhotosManage
+              photos={homepageData?.photos || []}
+              onRefresh={loadHomepageData}
+            />
+          </div>
+        )}
+
+        {activeTab === "videos" && (
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-8">
+            <CollegeVideosManage
+              videos={homepageData?.videos || []}
+              onRefresh={loadHomepageData}
+            />
+          </div>
+        )}
+
+        {activeTab === "dean" && homepageData?.dean && (
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-8">
+            <DeanDetailsManage
+              dean={homepageData.dean}
+              onRefresh={loadHomepageData}
             />
           </div>
         )}

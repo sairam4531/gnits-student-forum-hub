@@ -10,6 +10,7 @@ import {
   eventSubmissionSchema,
 } from "@/lib/event-validation";
 import { getLocalEvents, saveLocalEvent } from "@/lib/local-events-store";
+import { getHomepageStore } from "@/lib/local-homepage-store";
 
 describe("App routing", () => {
   it("matches a page for / instead of falling back to not found", () => {
@@ -116,5 +117,18 @@ describe("App routing", () => {
     const found = events.find((e) => e.id === testId);
     expect(found).toBeDefined();
     expect(found?.event_name).toBe("Test Conducted Event on ISTE");
+  });
+
+  it("stores and provides dynamic homepage photos, video, and dean details", () => {
+    const store = getHomepageStore();
+
+    expect(store).toBeDefined();
+    expect(Array.isArray(store.photos)).toBe(true);
+    expect(store.photos.length).toBeGreaterThan(0);
+    expect(Array.isArray(store.videos)).toBe(true);
+    expect(store.videos.length).toBeGreaterThan(0);
+    expect(store.dean).toBeDefined();
+    expect(store.dean.name).toContain("Dr.");
+    expect(store.dean.email).toContain("@gnits.ac.in");
   });
 });

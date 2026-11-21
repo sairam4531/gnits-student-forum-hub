@@ -172,6 +172,23 @@
   animation-play-state: paused;
 }
 
+@keyframes continuous-marquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-33.333333%);
+  }
+}
+
+.animate-continuous-marquee {
+  animation: continuous-marquee 14s linear infinite;
+}
+
+.animate-continuous-marquee:hover {
+  animation-play-state: paused;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .forum-marquee-track {
     animation: none;
