@@ -60,6 +60,9 @@ function StudentAffairsPortalPage() {
           setPhotos(homeData.photos || []);
           setFeaturedPhotos(homeData.featuredPhotos || []);
           setFeaturedVideo(homeData.featuredVideo || null);
+          setAllVideos(
+            homeData.allVideos || (homeData.featuredVideo ? [homeData.featuredVideo] : []),
+          );
           if (homeData.dean) setDean(homeData.dean);
         }
 
@@ -89,33 +92,44 @@ function StudentAffairsPortalPage() {
       {/* 1. Top Header with scrolling welcome heading from right to left till logos */}
       <StudentAffairsHeader onOpenDrawer={() => setIsDrawerOpen(true)} />
 
-      {/* 2. Main Dashboard Section with best colours */}
-      <main className="flex-1 bg-gradient-to-b from-slate-100 via-slate-50 to-slate-100">
-        <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 py-6 sm:py-8 md:py-10 space-y-8">
-          {/* A. Middle Section: Videos will play in loop */}
-          <section aria-label="Campus Loop Video Showcase">
-            <LoopVideoShowcase
-              video={featuredVideo}
-              allVideos={allVideos.length > 0 ? allVideos : featuredVideo ? [featuredVideo] : []}
-              onOpenGallery={() => setIsGalleryOpen(true)}
-              featuredPhotos={featuredPhotos.length > 0 ? featuredPhotos : photos}
-            />
-          </section>
+      {/* 2. Main Dashboard Section with full layout video and boxless dean profile */}
+      <main className="flex-1 bg-white">
+        {/* A. Middle Section: Videos will play in loop - FULL LAYOUT & FULL SCREEN, NO BOXES */}
+        <section aria-label="Campus Loop Video Showcase" className="w-full">
+          <LoopVideoShowcase
+            video={featuredVideo}
+            allVideos={allVideos.length > 0 ? allVideos : featuredVideo ? [featuredVideo] : []}
+            onOpenGallery={() => setIsGalleryOpen(true)}
+            featuredPhotos={featuredPhotos.length > 0 ? featuredPhotos : photos}
+            onScrollToDean={() => {
+              document
+                .getElementById("dean-profile-section")
+                ?.scrollIntoView({ behavior: "smooth" });
+            }}
+          />
+        </section>
 
-          {/* B. Lower Section: Display Dean's Profile */}
-          <section aria-label="Dean's Directorate Profile">
+        {/* B. Lower Section: Display Dean's Profile - FULL LAYOUT, NO BOXES */}
+        <section
+          id="dean-profile-section"
+          aria-label="Dean's Directorate Profile"
+          className="w-full bg-slate-50/70 py-12 sm:py-16 md:py-20 border-t border-slate-200/80"
+        >
+          <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
             <DeanDetailsCard
               dean={dean}
               onOpenEventsDrawer={() => setIsDrawerOpen(true)}
             />
-          </section>
+          </div>
+        </section>
 
-          {/* Conducted Events & Add Event Section when selected from the 3-lines menu */}
-          {selectedClub && selectedForumName && selectedForumSlug && (
-            <div
-              ref={conductedEventsSectionRef}
-              className="mt-10 rounded-3xl bg-white p-6 sm:p-8 border border-slate-200 shadow-xl animate-in fade-in duration-300"
-            >
+        {/* Conducted Events & Add Event Section when selected from the 3-lines menu */}
+        {selectedClub && selectedForumName && selectedForumSlug && (
+          <div
+            ref={conductedEventsSectionRef}
+            className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-10"
+          >
+            <div className="rounded-3xl bg-white p-6 sm:p-8 border border-slate-200 shadow-xl animate-in fade-in duration-300">
               <ConductedEventsView
                 club={selectedClub}
                 forumName={selectedForumName}
@@ -127,8 +141,8 @@ function StudentAffairsPortalPage() {
                 }}
               />
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </main>
 
       {/* Slide-out Drawer: Available Events & Clubs (Triggered by Hamburger 3-lines click) */}

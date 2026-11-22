@@ -51,15 +51,17 @@ export const getPublicHomepageDataServerFn = createServerFn({ method: "GET" }).h
     // If no photos explicitly featured, take the top 2 active photos
     const displayPhotos = featuredPhotos.length > 0 ? featuredPhotos.slice(0, 4) : activePhotos.slice(0, 4);
 
+    const activeVideos = store.videos.filter((v) => v.is_active);
     const featuredVideo =
-      store.videos.find((v) => v.is_active && v.is_featured) ||
-      store.videos.find((v) => v.is_active) ||
+      activeVideos.find((v) => v.is_featured) ||
+      activeVideos[0] ||
       null;
 
     return {
       photos: activePhotos,
       featuredPhotos: displayPhotos,
       featuredVideo,
+      allVideos: activeVideos,
       dean: store.dean,
     };
   },
