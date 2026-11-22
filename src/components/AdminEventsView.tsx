@@ -18,6 +18,7 @@ import * as XLSX from "xlsx";
 import { getAdminForumEventsServerFn, type AdminEventRecord } from "@/lib/admin.functions";
 import { type ForumClub } from "@/lib/student-forums";
 import { getEventFileUrl } from "@/lib/event-file-storage";
+import { getClientAdminEvents, getClientEvents } from "@/lib/client-portal-store";
 
 interface AdminEventsViewProps {
   club: ForumClub;
@@ -38,13 +39,61 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
     setLoading(true);
     setError(null);
     try {
-      const data = await getAdminForumEventsServerFn({
-        data: {
-          clubSlug: club.slug,
-          forumSlug: forumSlug,
-        },
+      let serverEvents: AdminEventRecord[] = [];
+      try {
+        const data = await getAdminForumEventsServerFn({
+          data: {
+            clubSlug: club.slug,
+            forumSlug: forumSlug,
+          },
+        });
+        if (Array.isArray(data)) {
+          serverEvents = data as AdminEventRecord[];
+        }
+      } catch (serverErr) {
+        console.warn("Could not load from server, using local admin store:", serverErr);
+      }
+
+      // Merge server events with persistent client admin events and public events
+      const clientAdminEvents = getClientAdminEvents().filter(
+        (e) => e.club_slug === club.slug && e.forum_slug === forumSlug
+      );
+      const clientPublicEvents = getClientEvents().filter(
+        (e) => e.club_slug === club.slug && e.forum_slug === forumSlug
+      );
+
+      const map = new Map<string, AdminEventRecord>();
+
+      // 1. First add server events
+      serverEvents.forEach((ev) => map.set(ev.id, ev));
+
+      // 2. Add client admin events (overwrites with latest full details)
+      clientAdminEvents.forEach((ev) => map.set(ev.id, ev));
+
+      // 3. Fallback: if an event is in clientPublicEvents (e.g. submitted from student portal), ensure it ALWAYS appears in Admin!
+      clientPublicEvents.forEach((pub) => {
+        if (!map.has(pub.id)) {
+          map.set(pub.id, {
+            id: pub.id,
+            club_slug: pub.club_slug,
+            forum_slug: pub.forum_slug,
+            event_name: pub.event_name,
+            event_start: pub.event_start,
+            event_end: pub.event_end,
+            resource_persons: pub.resource_persons || "Not specified",
+            submitter_name: (pub as any).submitter_name || "Student Submitter",
+            submitter_email: (pub as any).submitter_email || "student@gnits.ac.in",
+            report_object_path: (pub as any).report_object_path || "",
+            report_file_name: (pub as any).report_file_name || "Event_Report.pdf",
+            report_content_type: (pub as any).report_content_type || "application/pdf",
+            photo_object_paths: (pub as any).photo_object_paths || [],
+            photo_file_names: (pub as any).photo_file_names || [],
+            created_at: pub.created_at || new Date().toISOString(),
+          });
+        }
       });
-      setEvents(data as AdminEventRecord[]);
+
+      setEvents(Array.from(map.values()));
     } catch (err: unknown) {
       console.warn("Could not load admin events:", err);
       setError(err instanceof Error ? err.message : "Failed to load events for this forum.");

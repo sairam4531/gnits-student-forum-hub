@@ -26,6 +26,7 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { GnitsCollegeLogo } from "@/components/GnitsCollegeLogo";
 import {
   forums,
   institutionalEvents,
@@ -221,10 +222,8 @@ export function EventsClubsDrawer({
       <div className="relative w-72 sm:w-80 max-w-[85vw] bg-white h-full shadow-2xl flex flex-col z-10 animate-in slide-in-from-left duration-250 border-r border-slate-200">
         {/* Compact Header */}
         <div className="px-3.5 py-3 border-b border-slate-200 bg-white flex items-center justify-between">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="h-7 w-7 rounded-lg bg-[#0f2757] text-white flex items-center justify-center font-black text-[10px] flex-shrink-0">
-              GNITS
-            </div>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <GnitsCollegeLogo className="h-8 w-8 flex-shrink-0" />
             <div className="min-w-0">
               <h3 className="text-xs font-black text-slate-900 tracking-tight leading-none truncate">
                 {isAdmin ? "Admin Affairs Portal" : "Student Affairs Portal"}
@@ -516,18 +515,7 @@ export function EventsClubsDrawer({
               <span>Switch to Student Portal</span>
             </Link>
           </div>
-        ) : (
-          <div className="p-2.5 border-t border-slate-200 bg-slate-50">
-            <Link
-              to="/admin"
-              onClick={onClose}
-              className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-800 py-1.5 text-xs font-bold shadow-2xs transition-colors"
-            >
-              <ShieldCheck className="h-3.5 w-3.5 text-orange-600" />
-              <span>Admin Portal Login</span>
-            </Link>
-          </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

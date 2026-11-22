@@ -342,7 +342,8 @@ const DeanDetailsSchema = z.object({
   name: z.string().min(1, "Name is required"),
   designation: z.string().min(1, "Designation is required"),
   email: z.string().email("Valid email is required"),
-  contact_number: z.string().min(1, "Contact number is required"),
+  contact_number: z.string().optional(),
+  office: z.string().optional(),
   profile_photo: z.string().optional(),
   photoBase64: z.string().optional(),
   photoFileName: z.string().optional(),
@@ -363,12 +364,20 @@ export const updateDeanDetailsAdminServerFn = createServerFn({ method: "POST" })
       finalPhotoUrl = saveUploadedMedia("dean", data.photoFileName, data.photoBase64);
     }
 
+    const officeValue =
+      data.office?.trim() ||
+      data.contact_number?.trim() ||
+      store.dean.office ||
+      store.dean.contact_number ||
+      "Dean – Student Affairs, GNITS, Hyderabad";
+
     store.dean = {
       id: store.dean.id || "dean-1",
       name: data.name,
       designation: data.designation,
       email: data.email,
-      contact_number: data.contact_number,
+      contact_number: officeValue,
+      office: officeValue,
       profile_photo: finalPhotoUrl,
       updated_at: new Date().toISOString(),
     };

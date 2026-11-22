@@ -15,9 +15,10 @@ import {
   Upload,
 } from "lucide-react";
 import { getPublicForumEvents, submitStudentEvent, type PublicEventRecord } from "@/lib/events.functions";
+import { type AdminEventRecord } from "@/lib/admin.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { type ForumClub } from "@/lib/student-forums";
-import { getClientEvents, saveClientEvent } from "@/lib/client-portal-store";
+import { getClientEvents, saveClientEvent, saveClientAdminEvent } from "@/lib/client-portal-store";
 import { saveEventFile, compressImage } from "@/lib/event-file-storage";
 
 interface ConductedEventsViewProps {
@@ -270,6 +271,26 @@ export function ConductedEventsView({
         resource_persons: resourcePersons.trim(),
       };
       saveClientEvent(clientEventRecord);
+
+      // Save full admin metadata for reports, downloads & excel
+      const clientAdminRecord: AdminEventRecord = {
+        id: finalEventId,
+        club_slug: club.slug,
+        forum_slug: forumSlug,
+        event_name: eventName.trim(),
+        event_start: eventStart,
+        event_end: eventEnd,
+        resource_persons: resourcePersons.trim(),
+        submitter_name: submitterName.trim() || "Student Submitter",
+        submitter_email: submitterEmail.trim().toLowerCase() || "student@gnits.ac.in",
+        report_object_path: reportPath,
+        report_file_name: reportFile.name,
+        report_content_type: reportFile.type || "application/pdf",
+        photo_object_paths: photoPaths,
+        photo_file_names: photoNames,
+        created_at: new Date().toISOString(),
+      };
+      saveClientAdminEvent(clientAdminRecord);
 
       setSubmitSuccess(true);
       // Reset form

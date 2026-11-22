@@ -5,9 +5,11 @@ import type {
   DeanDetails,
 } from "@/lib/local-homepage-store";
 import type { PublicEventRecord } from "@/lib/events.functions";
+import type { AdminEventRecord } from "@/lib/admin.functions";
 
 const HOMEPAGE_KEY = "GNITS_HOMEPAGE_PERSISTENT_DATA_V2";
 const EVENTS_KEY = "GNITS_EVENTS_PERSISTENT_DATA_V2";
+const ADMIN_EVENTS_KEY = "GNITS_ADMIN_EVENTS_PERSISTENT_DATA_V2";
 const DELETED_IDS_KEY = "GNITS_DELETED_ITEMS_TRACKER_V2";
 const SYNC_BROADCAST_CHANNEL = "gnits_portal_sync_channel";
 
@@ -94,7 +96,8 @@ const DEFAULT_CLIENT_DATA: ClientHomepageData = {
     designation: "Dean, Student Affairs & Professor",
     profile_photo: "",
     email: "aparna.patle@gnits.ac.in",
-    contact_number: "",
+    contact_number: "Dean – Student Affairs, GNITS, Hyderabad",
+    office: "Dean – Student Affairs, GNITS, Hyderabad",
     updated_at: new Date().toISOString(),
   },
 };
@@ -343,6 +346,61 @@ export function deleteClientEvent(eventId: string): void {
     const current = getClientEvents();
     const remaining = current.filter((e) => e.id !== eventId);
     localStorage.setItem(EVENTS_KEY, JSON.stringify(remaining));
+    broadcastUpdate("EVENTS");
+  } catch {
+    // ignore
+  }
+}
+
+// -------------------------------------------------------------
+// ADMIN EVENTS SPECIFIC (Full metadata for reports & excel)
+// -------------------------------------------------------------
+export function getClientAdminEvents(): AdminEventRecord[] {
+  if (!isClient()) return [];
+  try {
+    const raw = localStorage.getItem(ADMIN_EVENTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    const tracker = getDeletedTracker();
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((e: AdminEventRecord) => !tracker.eventIds.includes(e.id));
+  } catch {
+    return [];
+  }
+}
+
+export function saveClientAdminEvent(event: AdminEventRecord): void {
+  if (!isClient()) return;
+  try {
+    const current = getClientAdminEvents();
+    const existingIdx = current.findIndex((e) => e.id === event.id);
+    const updated = [...current];
+
+    if (existingIdx >= 0) {
+      updated[existingIdx] = event;
+    } else {
+      updated.unshift(event);
+    }
+
+    localStorage.setItem(ADMIN_EVENTS_KEY, JSON.stringify(updated));
+    broadcastUpdate("EVENTS");
+  } catch {
+    // ignore
+  }
+}
+
+export function deleteClientAdminEvent(eventId: string): void {
+  if (!isClient()) return;
+  try {
+    const tracker = getDeletedTracker();
+    if (!tracker.eventIds.includes(eventId)) {
+      tracker.eventIds.push(eventId);
+      saveDeletedTracker(tracker);
+    }
+    const current = getClientAdminEvents();
+    const remaining = current.filter((e) => e.id !== eventId);
+    localStorage.setItem(ADMIN_EVENTS_KEY, JSON.stringify(remaining));
+    deleteClientEvent(eventId);
     broadcastUpdate("EVENTS");
   } catch {
     // ignore

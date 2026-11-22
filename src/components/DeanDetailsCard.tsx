@@ -7,10 +7,10 @@ interface DeanDetailsCardProps {
 }
 
 export function DeanDetailsCard({ dean }: DeanDetailsCardProps) {
-  const name = dean.name || "Dr. Aparna Patle";
+  const name = dean.name || "Dr. Aparna Palle";
   const designation = dean.designation || "Dean, Student Affairs & Professor";
-  const email = dean.email || "aparna.patle@gnits.ac.in";
-  const office = "Dean – Student Affairs, GNITS, Hyderabad";
+  const email = dean.email || "aparna.palle@gnits.ac.in";
+  const office = dean.office || dean.contact_number || "Dean – Student Affairs, GNITS, Hyderabad";
 
   return (
     <div className="w-full py-4">

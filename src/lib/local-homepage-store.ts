@@ -34,7 +34,8 @@ export interface DeanDetails {
   designation: string;
   profile_photo: string;
   email: string;
-  contact_number: string;
+  contact_number?: string;
+  office?: string;
   updated_at: string;
 }
 
