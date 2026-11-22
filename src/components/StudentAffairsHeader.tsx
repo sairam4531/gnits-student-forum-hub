@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from "react";
-import { Menu } from "lucide-react";
 import { AnniversaryLogo } from "@/components/AnniversaryLogo";
 import { GnitsCollegeLogo } from "@/components/GnitsCollegeLogo";
 
 interface StudentAffairsHeaderProps {
   onOpenDrawer: () => void;
+  title?: string;
 }
 
 interface ScrollingItem {
@@ -13,7 +13,10 @@ interface ScrollingItem {
   triggered: boolean;
 }
 
-export function StudentAffairsHeader({ onOpenDrawer }: StudentAffairsHeaderProps) {
+export function StudentAffairsHeader({
+  onOpenDrawer,
+  title = "Welcome to Dean Student Affairs Portal",
+}: StudentAffairsHeaderProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const textMeasureRef = useRef<HTMLSpanElement>(null);
 
@@ -49,7 +52,7 @@ export function StudentAffairsHeader({ onOpenDrawer }: StudentAffairsHeaderProps
     return () => {
       resizeObserver.disconnect();
     };
-  }, []);
+  }, [title]);
 
   // Frame-by-frame animation: One title scrolls from right to left.
   // When "Welcome" touches the left logo (x <= 0), the next title starts from the right side.
@@ -146,7 +149,7 @@ export function StudentAffairsHeader({ onOpenDrawer }: StudentAffairsHeaderProps
           </button>
 
           {/* Official GNITS College Logo */}
-          <div className="h-13 w-13 sm:h-16 sm:w-16 flex items-center justify-center">
+          <div className="h-13 w-13 sm:h-16 sm:w-16 flex items-center justify-center flex-shrink-0">
             <GnitsCollegeLogo className="h-full w-full" />
           </div>
         </div>
@@ -162,7 +165,7 @@ export function StudentAffairsHeader({ onOpenDrawer }: StudentAffairsHeaderProps
             className="absolute invisible pointer-events-none whitespace-nowrap text-base sm:text-xl md:text-2xl font-black tracking-wide"
             aria-hidden="true"
           >
-            Welcome to Dean Student Affairs Portal
+            {title}
           </span>
 
           {/* Scrolling Messages - Single title scrolling across one after one */}
@@ -174,7 +177,7 @@ export function StudentAffairsHeader({ onOpenDrawer }: StudentAffairsHeaderProps
               }}
               className="absolute whitespace-nowrap text-base sm:text-xl md:text-2xl font-black text-black tracking-wide drop-shadow-xs will-change-transform pointer-events-none"
             >
-              Welcome to Dean Student Affairs Portal
+              {title}
             </div>
           ))}
         </div>

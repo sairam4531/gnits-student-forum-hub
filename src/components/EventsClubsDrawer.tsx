@@ -20,8 +20,9 @@ import {
   Lightbulb,
   Microscope,
   Shield,
+  LayoutDashboard,
 } from "lucide-react";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
   forums,
   institutionalEvents,
@@ -34,18 +35,23 @@ interface EventsClubsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectForum: (club: ForumClub, forumName: string, forumSlug: string) => void;
-  onOpenSubmitModal: (club: ForumClub, forumName: string, forumSlug: string) => void;
-  recentEvents: PublicEventRecord[];
+  onOpenSubmitModal?: (club: ForumClub, forumName: string, forumSlug: string) => void;
+  onSelectDashboard?: () => void;
+  isAdmin?: boolean;
+  recentEvents?: PublicEventRecord[];
 }
 
 export function EventsClubsDrawer({
   isOpen,
   onClose,
   onSelectForum,
+  onSelectDashboard,
+  isAdmin = false,
 }: EventsClubsDrawerProps) {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Accordion state: None expanded initially so user sees the 10 main names first
+  // Accordion state: None expanded initially so user sees the main names first
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
 
   // Sub-accordion state inside Student Forums: None expanded initially
@@ -134,23 +140,33 @@ export function EventsClubsDrawer({
     },
   ];
 
-  // Primary list of side bar events (10 names only at first)
+  // Primary list of side bar events (Dashboard added BEFORE Student Forums as requested)
   const mainEvents = [
-    { name: "Student Forums", icon: Users, isSpecial: true },
-    { name: "Annual day", icon: PartyPopper, isSpecial: false },
-    { name: "Women's Leadership Conclave (WLC)", icon: Sparkles, isSpecial: false },
-    { name: "Graduation Day", icon: GraduationCap, isSpecial: false },
-    { name: "Student Council", icon: ShieldCheck, isSpecial: false },
-    { name: "Orientation Day", icon: Compass, isSpecial: false },
-    { name: "Induction Program", icon: BookOpen, isSpecial: false },
-    { name: "Ganesh Utsav", icon: Flame, isSpecial: false },
-    { name: "Investiture Ceremony", icon: Award, isSpecial: false },
-    { name: "Student Welfare Fund (SWF)", icon: HeartHandshake, isSpecial: false },
+    { name: "Dashboard", icon: LayoutDashboard, isDashboard: true, isSpecial: false },
+    { name: "Student Forums", icon: Users, isDashboard: false, isSpecial: true },
+    { name: "Annual day", icon: PartyPopper, isDashboard: false, isSpecial: false },
+    { name: "Women's Leadership Conclave (WLC)", icon: Sparkles, isDashboard: false, isSpecial: false },
+    { name: "Graduation Day", icon: GraduationCap, isDashboard: false, isSpecial: false },
+    { name: "Student Council", icon: ShieldCheck, isDashboard: false, isSpecial: false },
+    { name: "Orientation Day", icon: Compass, isDashboard: false, isSpecial: false },
+    { name: "Induction Program", icon: BookOpen, isDashboard: false, isSpecial: false },
+    { name: "Ganesh Utsav", icon: Flame, isDashboard: false, isSpecial: false },
+    { name: "Investiture Ceremony", icon: Award, isDashboard: false, isSpecial: false },
+    { name: "Student Welfare Fund (SWF)", icon: HeartHandshake, isDashboard: false, isSpecial: false },
   ];
 
   const handleSelect = (club: ForumClub, forumName: string) => {
     const slug = toSlug(forumName);
     onSelectForum(club, forumName, slug);
+    onClose();
+  };
+
+  const handleDashboardClick = () => {
+    if (onSelectDashboard) {
+      onSelectDashboard();
+    } else {
+      navigate({ to: isAdmin ? "/admin" : "/" });
+    }
     onClose();
   };
 
@@ -196,7 +212,7 @@ export function EventsClubsDrawer({
             </div>
             <div className="min-w-0">
               <h3 className="text-xs font-black text-slate-900 tracking-tight leading-none truncate">
-                Student Affairs Portal
+                {isAdmin ? "Admin Affairs Portal" : "Student Affairs Portal"}
               </h3>
               <p className="text-[10px] text-slate-500 font-medium truncate mt-0.5">
                 Events &amp; Forums Navigation
@@ -270,9 +286,29 @@ export function EventsClubsDrawer({
               )}
             </div>
           ) : (
-            /* Main Events List (Displays ONLY the top-level names first) */
+            /* Main Events List (Displays ONLY top-level names first, Dashboard at the very top) */
             mainEvents.map((item) => {
               const IconComp = item.icon;
+
+              /* 0. Dashboard Item (before Student Forums as requested) */
+              if (item.isDashboard) {
+                return (
+                  <div key={item.name} className="bg-white">
+                    <button
+                      type="button"
+                      onClick={handleDashboardClick}
+                      className="w-full flex items-center justify-between px-3 py-2.5 bg-white text-slate-800 hover:bg-orange-50/70 hover:text-orange-700 font-semibold transition-colors text-left cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 pr-1">
+                        <IconComp className="h-4 w-4 flex-shrink-0 text-slate-600 group-hover:text-orange-600 transition-colors" />
+                        <span className="truncate tracking-tight font-bold">{item.name}</span>
+                      </div>
+
+                      <ChevronRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-orange-600 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+                    </button>
+                  </div>
+                );
+              }
 
               /* 1. Student Forums: Expandable Accordion into the 6 categories */
               if (item.isSpecial) {
@@ -365,7 +401,7 @@ export function EventsClubsDrawer({
                 );
               }
 
-              /* 2. Institutional Events: Sub-events removed as requested; direct click opens dedicated page */
+              /* 2. Institutional Events: Direct click opens dedicated event page */
               return (
                 <div key={item.name} className="bg-white">
                   <button
@@ -386,16 +422,27 @@ export function EventsClubsDrawer({
           )}
         </div>
 
-        {/* Compact Footer: Admin Portal Link */}
+        {/* Compact Footer: Switch between Student Portal and Admin Portal */}
         <div className="p-2.5 border-t border-slate-200 bg-slate-50">
-          <Link
-            to="/admin"
-            onClick={onClose}
-            className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-800 py-1.5 text-xs font-bold shadow-2xs transition-colors"
-          >
-            <ShieldCheck className="h-3.5 w-3.5 text-orange-600" />
-            <span>Admin Portal Login</span>
-          </Link>
+          {isAdmin ? (
+            <Link
+              to="/"
+              onClick={onClose}
+              className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-800 py-1.5 text-xs font-bold shadow-2xs transition-colors"
+            >
+              <Users className="h-3.5 w-3.5 text-orange-600" />
+              <span>Switch to Student Portal</span>
+            </Link>
+          ) : (
+            <Link
+              to="/admin"
+              onClick={onClose}
+              className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-800 py-1.5 text-xs font-bold shadow-2xs transition-colors"
+            >
+              <ShieldCheck className="h-3.5 w-3.5 text-orange-600" />
+              <span>Admin Portal Login</span>
+            </Link>
+          )}
         </div>
       </div>
     </div>

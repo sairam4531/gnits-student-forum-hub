@@ -144,6 +144,9 @@ function DedicatedEventPage() {
         onClose={() => setIsDrawerOpen(false)}
         onSelectForum={handleSelectForum}
         onOpenSubmitModal={handleSelectForum}
+        onSelectDashboard={() => {
+          navigate({ to: "/" });
+        }}
         recentEvents={recentEvents}
       />
 

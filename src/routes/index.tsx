@@ -209,6 +209,9 @@ function StudentAffairsPortalPage() {
         onClose={() => setIsDrawerOpen(false)}
         onSelectForum={handleSelectForum}
         onOpenSubmitModal={handleSelectForum}
+        onSelectDashboard={() => {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
         recentEvents={recentEvents}
       />
 

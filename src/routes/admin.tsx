@@ -17,7 +17,6 @@ import {
   LayoutDashboard,
   Calendar,
 } from "lucide-react";
-import { Header } from "@/components/Header";
 import { ForumCarousel } from "@/components/ForumCarousel";
 import { ClubNavigation } from "@/components/ClubNavigation";
 import { AdminEventsView } from "@/components/AdminEventsView";
@@ -25,6 +24,8 @@ import { AdminProfileModal } from "@/components/AdminProfileModal";
 import { DailyPhotosManage } from "@/components/admin/DailyPhotosManage";
 import { CollegeVideosManage } from "@/components/admin/CollegeVideosManage";
 import { DeanDetailsManage } from "@/components/admin/DeanDetailsManage";
+import { StudentAffairsHeader } from "@/components/StudentAffairsHeader";
+import { EventsClubsDrawer } from "@/components/EventsClubsDrawer";
 import {
   adminLoginServerFn,
   getAdminSessionServerFn,
@@ -62,6 +63,7 @@ function AdminPage() {
   // Admin Profile state
   const [adminProfile, setAdminProfile] = useState<AdminProfileRecord | null>(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   // Active Admin Tab
   const [activeTab, setActiveTab] = useState<"events" | "photos" | "videos" | "dean">("events");
@@ -228,7 +230,11 @@ function AdminPage() {
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex flex-col bg-background text-foreground">
-        <Header isAdmin />
+        {/* Same header as Student Portal with Left Logo, Marquee, Right 28 Years Logo & 3-lines menu */}
+        <StudentAffairsHeader
+          onOpenDrawer={() => setIsDrawerOpen(true)}
+          title="Welcome to Dean Student Affairs Admin Portal"
+        />
 
         <div className="flex-1 flex items-center justify-center p-4 sm:p-6 lg:p-8">
           <div className="w-full max-w-md rounded-3xl border border-border bg-card p-8 shadow-2xl animate-in fade-in duration-300">
@@ -335,6 +341,20 @@ function AdminPage() {
             </form>
           </div>
         </div>
+
+        {/* Sidebar Drawer on Login Screen */}
+        <EventsClubsDrawer
+          isOpen={isDrawerOpen}
+          onClose={() => setIsDrawerOpen(false)}
+          onSelectForum={(club, forumName, forumSlug) => {
+            // If not logged in, navigate to public event page
+            window.location.href = `/events?club=${club.slug}&forum=${encodeURIComponent(forumName)}&slug=${forumSlug}`;
+          }}
+          onSelectDashboard={() => {
+            window.location.href = "/";
+          }}
+          isAdmin={true}
+        />
       </div>
     );
   }
@@ -342,8 +362,11 @@ function AdminPage() {
   // Authenticated Admin Dashboard
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground antialiased selection:bg-primary/20">
-      {/* Top Header */}
-      <Header isAdmin />
+      {/* Top Header matching Student Portal with College Logo, Marquee, 28 Years Logo & 3-lines menu */}
+      <StudentAffairsHeader
+        onOpenDrawer={() => setIsDrawerOpen(true)}
+        title="Welcome to Dean Student Affairs Admin Portal"
+      />
 
       {/* Admin Action Sub-Bar */}
       <div className="border-b border-border/80 bg-muted/40 py-2.5 px-4 sm:px-6 lg:px-8">
@@ -535,6 +558,28 @@ function AdminPage() {
           onProfileUpdated={(updated) => setAdminProfile(updated)}
         />
       )}
+
+      {/* Slide-out Drawer: Events & Clubs Navigation (with Dashboard at top) */}
+      <EventsClubsDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        onSelectForum={(club, forumName, forumSlug) => {
+          setSelectedClub(club);
+          setSelectedForumName(forumName);
+          setSelectedForumSlug(forumSlug);
+          setActiveTab("events");
+          setTimeout(() => {
+            adminEventsRef.current?.scrollIntoView({ behavior: "smooth" });
+          }, 100);
+        }}
+        onSelectDashboard={() => {
+          setSelectedClub(null);
+          setSelectedForumName(null);
+          setSelectedForumSlug(null);
+          setActiveTab("events");
+        }}
+        isAdmin={true}
+      />
 
       {/* Footer */}
       <footer className="border-t border-border/80 bg-card/60 py-6">
