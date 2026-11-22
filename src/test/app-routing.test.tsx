@@ -9,7 +9,7 @@ import {
   isSubmissionPath,
   eventSubmissionSchema,
 } from "@/lib/event-validation";
-import { getLocalEvents, saveLocalEvent } from "@/lib/local-events-store";
+import { getLocalEvents, saveLocalEvent, deleteLocalEvent } from "@/lib/local-events-store";
 import { getHomepageStore } from "@/lib/local-homepage-store";
 
 describe("App routing", () => {
@@ -117,6 +117,9 @@ describe("App routing", () => {
     const found = events.find((e) => e.id === testId);
     expect(found).toBeDefined();
     expect(found?.event_name).toBe("Test Conducted Event on ISTE");
+
+    // Clean up test event immediately so data/events.json is never polluted
+    deleteLocalEvent(testId);
   });
 
   it("stores and provides dynamic homepage photos, video, and dean details", () => {

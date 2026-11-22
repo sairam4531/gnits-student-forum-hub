@@ -482,22 +482,24 @@ export function mergeServerWithClient(serverData: HomepageDataStore): ClientHome
     });
   }
 
-  // 2. Videos: Merge without resurrecting deleted items, preserving user-uploaded videos
+  // 2. Videos: Server videos are authoritative when available from server/KV across all browsers
   const mergedVideosMap = new Map<string, HomepageVideo>();
 
-  // Add server videos that were not deleted
-  (serverData.videos || []).forEach((sv) => {
-    if (!tracker.videoIds.includes(sv.id)) {
-      mergedVideosMap.set(sv.id, sanitizeVideoRecord(sv));
-    }
-  });
-
-  // Client videos take precedence or append
-  (clientData.videos || []).forEach((cv) => {
-    if (!tracker.videoIds.includes(cv.id)) {
-      mergedVideosMap.set(cv.id, sanitizeVideoRecord(cv));
-    }
-  });
+  if (serverData.videos && serverData.videos.length > 0) {
+    // Authoritative server-provided videos and ordering
+    serverData.videos.forEach((sv) => {
+      if (!tracker.videoIds.includes(sv.id)) {
+        mergedVideosMap.set(sv.id, sanitizeVideoRecord(sv));
+      }
+    });
+  } else {
+    // Fall back to client storage only if server returned no videos
+    (clientData.videos || []).forEach((cv) => {
+      if (!tracker.videoIds.includes(cv.id)) {
+        mergedVideosMap.set(cv.id, sanitizeVideoRecord(cv));
+      }
+    });
+  }
 
   let finalVideos = Array.from(mergedVideosMap.values()).map(sanitizeVideoRecord);
   if (finalVideos.length === 0) {

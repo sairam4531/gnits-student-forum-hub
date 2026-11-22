@@ -148,7 +148,25 @@ function AdminPage() {
       }
     });
 
-    const list = Array.from(map.values()).sort(
+    // Deduplicate: Primary by ID, secondary by signature (same club + forum + name + dates + submitter)
+    const deduplicatedEvents: AdminEventRecord[] = [];
+    const seenSignatures = new Map<string, number>();
+
+    Array.from(map.values()).forEach((ev) => {
+      const sig = `${ev.club_slug}::${ev.forum_slug}::${ev.event_name.trim().toLowerCase()}::${ev.event_start}::${ev.event_end}::${(ev.submitter_email || "").trim().toLowerCase()}`;
+      if (seenSignatures.has(sig)) {
+        const existingIdx = seenSignatures.get(sig)!;
+        const existing = deduplicatedEvents[existingIdx];
+        if (existing && ev.created_at > existing.created_at) {
+          deduplicatedEvents[existingIdx] = ev;
+        }
+      } else {
+        seenSignatures.set(sig, deduplicatedEvents.length);
+        deduplicatedEvents.push(ev);
+      }
+    });
+
+    const list = deduplicatedEvents.sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
     setAllSubmittedEvents(list);
@@ -343,7 +361,24 @@ function AdminPage() {
         }
       });
 
-      const allEvents = Array.from(map.values());
+      // Deduplicate: Primary by ID, secondary by signature (same club + forum + name + dates + submitter)
+      const allEvents: AdminEventRecord[] = [];
+      const seenSignatures = new Map<string, number>();
+
+      Array.from(map.values()).forEach((ev) => {
+        const sig = `${ev.club_slug}::${ev.forum_slug}::${ev.event_name.trim().toLowerCase()}::${ev.event_start}::${ev.event_end}::${(ev.submitter_email || "").trim().toLowerCase()}`;
+        if (seenSignatures.has(sig)) {
+          const existingIdx = seenSignatures.get(sig)!;
+          const existing = allEvents[existingIdx];
+          if (existing && ev.created_at > existing.created_at) {
+            allEvents[existingIdx] = ev;
+          }
+        } else {
+          seenSignatures.set(sig, allEvents.length);
+          allEvents.push(ev);
+        }
+      });
+
       if (allEvents.length === 0) {
         alert("No submitted events available for export.");
         return;
