@@ -1,6 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "gnits-student-affairs",
+  "account_id": "f268748965c0561933f524c9983a8f01",
   "main": ".output/server/index.mjs",
   "compatibility_date": "2026-11-23",
   "compatibility_flags": [
@@ -13,13 +14,14 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "gnits-student-affairs-db"
+      "database_name": "gnits-student-affairs-db",
+      "database_id": "ee7c3810-8fae-44a9-baa0-18c6da7f7442"
     }
   ],
   "kv_namespaces": [
     {
       "binding": "KV",
-      "id": "gnits-student-affairs"
+      "id": "354e86ab39ec47c7b5f4578b4a79ce6a"
     }
   ]
 }
