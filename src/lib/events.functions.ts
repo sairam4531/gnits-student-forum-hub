@@ -115,7 +115,7 @@ export const getPublicForumEvents = createServerFn({ method: "GET" })
 export const submitStudentEvent = createServerFn({ method: "POST" })
   .validator((input) => eventSubmissionSchema.parse(input))
   .handler(async ({ data }) => {
-    const eventId = crypto.randomUUID();
+    const eventId = data.id || crypto.randomUUID();
 
     // 1. Save files locally if base64 provided
     if (data.reportBase64) {
@@ -148,6 +148,7 @@ export const submitStudentEvent = createServerFn({ method: "POST" })
       photo_object_paths: data.photoObjectPaths,
       photo_file_names: data.photoFileNames,
       created_at: new Date().toISOString(),
+      updated_at: data.id ? new Date().toISOString() : undefined,
       report_download_url: `/${data.reportObjectPath}`,
       photo_download_urls: data.photoObjectPaths.map((p) => `/${p}`),
     };
@@ -158,7 +159,8 @@ export const submitStudentEvent = createServerFn({ method: "POST" })
     try {
       if (process.env["SUPABASE_SERVICE_ROLE_KEY"]) {
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        await supabaseAdmin.from("student_forum_events").insert({
+        await supabaseAdmin.from("student_forum_events").upsert({
+          id: eventId,
           club_slug: data.clubSlug,
           forum_slug: data.forumSlug,
           event_name: data.eventName,

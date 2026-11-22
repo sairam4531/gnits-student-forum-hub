@@ -13,12 +13,18 @@ import {
   Loader2,
   X,
   Upload,
+  Edit3,
 } from "lucide-react";
 import { getPublicForumEvents, submitStudentEvent, type PublicEventRecord } from "@/lib/events.functions";
 import { type AdminEventRecord } from "@/lib/admin.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { type ForumClub } from "@/lib/student-forums";
-import { getClientEvents, saveClientEvent, saveClientAdminEvent } from "@/lib/client-portal-store";
+import {
+  getClientEvents,
+  saveClientEvent,
+  saveClientAdminEvent,
+  getClientAdminEvents,
+} from "@/lib/client-portal-store";
 import { saveEventFile, compressImage } from "@/lib/event-file-storage";
 
 interface ConductedEventsViewProps {
@@ -36,6 +42,7 @@ interface PublicEvent {
   event_start: string;
   event_end: string;
   created_at: string;
+  resource_persons?: string;
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -62,6 +69,16 @@ export function ConductedEventsView({
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Edit Mode state
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [existingReportPath, setExistingReportPath] = useState<string | null>(null);
+  const [existingReportName, setExistingReportName] = useState<string | null>(null);
+  const [existingReportType, setExistingReportType] = useState<string | null>(null);
+  const [existingPhotoPaths, setExistingPhotoPaths] = useState<string[]>([]);
+  const [existingPhotoNames, setExistingPhotoNames] = useState<string[]>([]);
+  const [existingPhotoUrls, setExistingPhotoUrls] = useState<string[]>([]);
+  const [existingCreatedAt, setExistingCreatedAt] = useState<string | null>(null);
 
   // Form input states
   const [eventName, setEventName] = useState("");
@@ -120,7 +137,56 @@ export function ConductedEventsView({
     setPhotoFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // Submit Handler
+  // Open modal for NEW event submission
+  const handleOpenNewModal = () => {
+    setEditingEventId(null);
+    setEventName("");
+    setEventStart("");
+    setEventEnd("");
+    setResourcePersons("");
+    setSubmitterName("");
+    setSubmitterEmail("");
+    setReportFile(null);
+    setPhotoFiles([]);
+    setExistingReportPath(null);
+    setExistingReportName(null);
+    setExistingReportType(null);
+    setExistingPhotoPaths([]);
+    setExistingPhotoNames([]);
+    setExistingPhotoUrls([]);
+    setExistingCreatedAt(null);
+    setSubmitError(null);
+    setSubmitSuccess(false);
+    setIsModalOpen(true);
+  };
+
+  // Open modal for EDITING an existing event submission
+  const handleOpenEditModal = (ev: PublicEvent) => {
+    const adminEvents = getClientAdminEvents();
+    const adminRecord = adminEvents.find((a) => a.id === ev.id);
+
+    setEditingEventId(ev.id);
+    setEventName(ev.event_name);
+    setEventStart(ev.event_start);
+    setEventEnd(ev.event_end);
+    setResourcePersons(adminRecord?.resource_persons || ev.resource_persons || "");
+    setSubmitterName(adminRecord?.submitter_name || "");
+    setSubmitterEmail(adminRecord?.submitter_email || "");
+    setExistingReportPath(adminRecord?.report_object_path || null);
+    setExistingReportName(adminRecord?.report_file_name || null);
+    setExistingReportType(adminRecord?.report_content_type || "application/pdf");
+    setExistingPhotoPaths(adminRecord?.photo_object_paths || []);
+    setExistingPhotoNames(adminRecord?.photo_file_names || []);
+    setExistingPhotoUrls(adminRecord?.photo_download_urls || []);
+    setExistingCreatedAt(ev.created_at || null);
+    setReportFile(null);
+    setPhotoFiles([]);
+    setSubmitError(null);
+    setSubmitSuccess(false);
+    setIsModalOpen(true);
+  };
+
+  // Submit / Update Handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError(null);
@@ -138,18 +204,14 @@ export function ConductedEventsView({
       return;
     }
     if (!resourcePersons.trim()) {
-      setSubmitError("Resource person name(s) are required.");
+      setSubmitError("Please provide Resource Person names & designations.");
       return;
     }
-    if (!submitterName.trim()) {
-      setSubmitError("Student submitter name is required.");
+    if (!submitterName.trim() || !submitterEmail.trim()) {
+      setSubmitError("Submitter contact details are required.");
       return;
     }
-    if (!submitterEmail.trim() || !submitterEmail.includes("@")) {
-      setSubmitError("A valid student email address is required.");
-      return;
-    }
-    if (!reportFile) {
+    if (!reportFile && !existingReportName) {
       setSubmitError("Please upload the Event Report (PDF or Word format).");
       return;
     }
@@ -157,49 +219,60 @@ export function ConductedEventsView({
     setSubmitting(true);
 
     try {
-      const submissionId = crypto.randomUUID();
+      const submissionId = editingEventId || crypto.randomUUID();
       const sanitizeName = (name: string) => name.replace(/[^a-zA-Z0-9._-]/g, "_");
 
-      // 1. Prepare file paths
-      const reportSafeName = sanitizeName(reportFile.name);
-      const reportPath = `submissions/${submissionId}/${reportSafeName}`;
-
-      // Save report file to IndexedDB for reliable permanent storage & instant downloads
-      await saveEventFile(reportPath, reportFile, reportFile.name);
-
-      const photoPaths: string[] = [];
-      const photoNames: string[] = [];
-
-      for (let i = 0; i < photoFiles.length; i++) {
-        const photo = photoFiles[i]!;
-        const photoSafeName = `${i}_${sanitizeName(photo.name)}`;
-        const photoPath = `submissions/${submissionId}/${photoSafeName}`;
-        photoPaths.push(photoPath);
-        photoNames.push(photo.name);
-        // Save photo file to IndexedDB
-        await saveEventFile(photoPath, photo, photo.name);
-      }
-
-      // Optional remote Supabase storage upload if alive
-      try {
-        await supabase.storage.from("student-forum-files").upload(reportPath, reportFile);
-        for (let i = 0; i < photoFiles.length; i++) {
-          await supabase.storage.from("student-forum-files").upload(photoPaths[i]!, photoFiles[i]!);
-        }
-      } catch (uploadErr) {
-        console.warn("Remote storage note (using persistent local storage):", uploadErr);
-      }
-
-      // 2. Prepare lightweight payloads to completely eliminate Vercel 413 Payload Too Large error
+      // 1. Prepare report file
+      let finalReportPath = existingReportPath || `submissions/${submissionId}/report.pdf`;
+      let finalReportName = existingReportName || "Event_Report.pdf";
+      let finalReportType = existingReportType || "application/pdf";
       let safeReportBase64: string | undefined = undefined;
-      // Only attach base64 if report is small (< 1 MB)
-      if (reportFile.size < 1024 * 1024) {
-        safeReportBase64 = await fileToBase64(reportFile);
+
+      if (reportFile) {
+        const reportSafeName = sanitizeName(reportFile.name);
+        finalReportPath = `submissions/${submissionId}/${reportSafeName}`;
+        finalReportName = reportFile.name;
+        finalReportType = reportFile.type || "application/pdf";
+
+        // Save report file to IndexedDB for reliable permanent storage & instant downloads
+        await saveEventFile(finalReportPath, reportFile, reportFile.name);
+
+        if (reportFile.size < 1024 * 1024) {
+          safeReportBase64 = await fileToBase64(reportFile);
+        }
+
+        try {
+          await supabase.storage.from("student-forum-files").upload(finalReportPath, reportFile);
+        } catch {
+          // fallback
+        }
       }
 
-      // Compress photos to lightweight thumbnails (< 800px) so total payload is tiny
+      // 2. Prepare photos
+      let finalPhotoPaths = [...existingPhotoPaths];
+      let finalPhotoNames = [...existingPhotoNames];
+      let finalPhotoUrls = [...existingPhotoUrls];
       let safePhotoBase64s: string[] | undefined = undefined;
+
       if (photoFiles.length > 0) {
+        const newPhotoPaths: string[] = [];
+        const newPhotoNames: string[] = [];
+
+        for (let i = 0; i < photoFiles.length; i++) {
+          const photo = photoFiles[i]!;
+          const photoSafeName = `${i}_${sanitizeName(photo.name)}`;
+          const photoPath = `submissions/${submissionId}/${photoSafeName}`;
+          newPhotoPaths.push(photoPath);
+          newPhotoNames.push(photo.name);
+          await saveEventFile(photoPath, photo, photo.name);
+
+          try {
+            await supabase.storage.from("student-forum-files").upload(photoPath, photo);
+          } catch {
+            // fallback
+          }
+        }
+
         try {
           const compressed = await Promise.all(
             photoFiles.slice(0, 5).map((p) => compressImage(p, 800, 800, 0.65))
@@ -208,13 +281,17 @@ export function ConductedEventsView({
         } catch {
           safePhotoBase64s = undefined;
         }
+
+        finalPhotoPaths = newPhotoPaths;
+        finalPhotoNames = newPhotoNames;
+        finalPhotoUrls = safePhotoBase64s || [];
       }
 
       // 3. Call server function with resilient error handling & automatic fallback
-      let res: { id?: string; success?: boolean } | null = null;
       try {
-        res = await submitStudentEvent({
+        await submitStudentEvent({
           data: {
+            id: editingEventId || undefined,
             clubSlug: club.slug,
             forumSlug: forumSlug,
             eventName: eventName.trim(),
@@ -223,21 +300,21 @@ export function ConductedEventsView({
             resourcePersons: resourcePersons.trim(),
             submitterName: submitterName.trim(),
             submitterEmail: submitterEmail.trim().toLowerCase(),
-            reportObjectPath: reportPath,
-            reportFileName: reportFile.name,
-            reportContentType: reportFile.type || "application/pdf",
-            photoObjectPaths: photoPaths,
-            photoFileNames: photoNames,
+            reportObjectPath: finalReportPath,
+            reportFileName: finalReportName,
+            reportContentType: finalReportType,
+            photoObjectPaths: finalPhotoPaths,
+            photoFileNames: finalPhotoNames,
             reportBase64: safeReportBase64,
             photoBase64s: safePhotoBase64s,
           },
         });
       } catch (firstErr) {
         console.warn("Full payload submission note, retrying with pure metadata:", firstErr);
-        // If Vercel edge throws 413 or payload issue, retry sending strictly metadata without base64
         try {
-          res = await submitStudentEvent({
+          await submitStudentEvent({
             data: {
+              id: editingEventId || undefined,
               clubSlug: club.slug,
               forumSlug: forumSlug,
               eventName: eventName.trim(),
@@ -246,11 +323,11 @@ export function ConductedEventsView({
               resourcePersons: resourcePersons.trim(),
               submitterName: submitterName.trim(),
               submitterEmail: submitterEmail.trim().toLowerCase(),
-              reportObjectPath: reportPath,
-              reportFileName: reportFile.name,
-              reportContentType: reportFile.type || "application/pdf",
-              photoObjectPaths: photoPaths,
-              photoFileNames: photoNames,
+              reportObjectPath: finalReportPath,
+              reportFileName: finalReportName,
+              reportContentType: finalReportType,
+              photoObjectPaths: finalPhotoPaths,
+              photoFileNames: finalPhotoNames,
             },
           });
         } catch (retryErr) {
@@ -258,23 +335,22 @@ export function ConductedEventsView({
         }
       }
 
-      // 4. Save to client persistent store so it persists permanently until deleted
-      const finalEventId = res?.id || submissionId;
+      // 4. Save/Update client public persistent store
       const clientEventRecord: PublicEventRecord = {
-        id: finalEventId,
+        id: submissionId,
         club_slug: club.slug,
         forum_slug: forumSlug,
         event_name: eventName.trim(),
         event_start: eventStart,
         event_end: eventEnd,
-        created_at: new Date().toISOString(),
+        created_at: existingCreatedAt || new Date().toISOString(),
         resource_persons: resourcePersons.trim(),
       };
       saveClientEvent(clientEventRecord);
 
-      // Save full admin metadata for reports, downloads & excel
+      // 5. Save/Update client admin metadata so it replaces the previous submission in place!
       const clientAdminRecord: AdminEventRecord = {
-        id: finalEventId,
+        id: submissionId,
         club_slug: club.slug,
         forum_slug: forumSlug,
         event_name: eventName.trim(),
@@ -283,27 +359,18 @@ export function ConductedEventsView({
         resource_persons: resourcePersons.trim(),
         submitter_name: submitterName.trim() || "Student Submitter",
         submitter_email: submitterEmail.trim().toLowerCase() || "student@gnits.ac.in",
-        report_object_path: reportPath,
-        report_file_name: reportFile.name,
-        report_content_type: reportFile.type || "application/pdf",
-        photo_object_paths: photoPaths,
-        photo_file_names: photoNames,
-        photo_download_urls: safePhotoBase64s || [],
-        created_at: new Date().toISOString(),
+        report_object_path: finalReportPath,
+        report_file_name: finalReportName,
+        report_content_type: finalReportType,
+        photo_object_paths: finalPhotoPaths,
+        photo_file_names: finalPhotoNames,
+        photo_download_urls: finalPhotoUrls,
+        created_at: existingCreatedAt || new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       };
       saveClientAdminEvent(clientAdminRecord);
 
       setSubmitSuccess(true);
-      // Reset form
-      setEventName("");
-      setEventStart("");
-      setEventEnd("");
-      setResourcePersons("");
-      setSubmitterName("");
-      setSubmitterEmail("");
-      setReportFile(null);
-      setPhotoFiles([]);
-
       // Refresh public events list
       fetchEvents();
     } catch (err: unknown) {
@@ -335,26 +402,22 @@ export function ConductedEventsView({
           </p>
         </div>
 
-        {/* Primary Action Button: "Add New Event on [Forum]" as requested */}
+        {/* Primary Action Button: "Add New Event on [Forum]" */}
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => {
-              setSubmitSuccess(false);
-              setSubmitError(null);
-              setIsModalOpen(true);
-            }}
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-bold text-primary-foreground shadow-lg transition-all hover:bg-primary/90 hover:shadow-xl hover:scale-102"
+            onClick={handleOpenNewModal}
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-xs sm:text-sm font-bold text-primary-foreground shadow-md hover:bg-primary/90 transition-all hover:scale-102 cursor-pointer"
           >
-            <PlusCircle className="h-5 w-5" />
+            <PlusCircle className="h-4 w-4" />
             <span>Add New Event on {forumName}</span>
           </button>
+
           {onClose && (
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border border-border bg-muted p-2.5 text-muted-foreground hover:text-foreground transition-colors"
-              title="Close panel"
+              className="rounded-xl border border-border bg-muted p-2.5 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
             >
               <X className="h-5 w-5" />
             </button>
@@ -362,12 +425,12 @@ export function ConductedEventsView({
         </div>
       </div>
 
-      {/* Events List */}
+      {/* Events Grid */}
       <div className="pt-6">
         {loading ? (
           <div className="flex items-center justify-center py-12 gap-3 text-muted-foreground">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            <span className="text-sm font-medium">Loading conducted events on {forumName}...</span>
+            <span className="text-sm font-medium">Loading events...</span>
           </div>
         ) : error ? (
           <div className="rounded-xl bg-destructive/10 p-4 text-sm text-destructive border border-destructive/20 flex items-center gap-3">
@@ -380,23 +443,19 @@ export function ConductedEventsView({
               <Calendar className="h-7 w-7" />
             </div>
             <h4 className="mt-4 text-base font-bold text-foreground">
-              No conducted events recorded for {forumName} yet
+              No conducted events posted yet for {forumName}
             </h4>
             <p className="mt-1 text-xs sm:text-sm text-muted-foreground max-w-md mx-auto">
-              Be the first to record an event! Click the button above to upload event details,
-              report, and stage photographs for administrative review.
+              Click the "Add New Event" button above to submit your completed event report and photos
+              to the student affairs administrator.
             </p>
             <button
               type="button"
-              onClick={() => {
-                setSubmitSuccess(false);
-                setSubmitError(null);
-                setIsModalOpen(true);
-              }}
-              className="mt-5 inline-flex items-center gap-2 rounded-lg bg-primary/10 text-primary px-4 py-2 text-xs sm:text-sm font-semibold border border-primary/20 hover:bg-primary/20 transition-colors"
+              onClick={handleOpenNewModal}
+              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
             >
               <PlusCircle className="h-4 w-4" />
-              <span>Submit Event Record</span>
+              <span>Submit First Event Report</span>
             </button>
           </div>
         ) : (
@@ -421,13 +480,25 @@ export function ConductedEventsView({
                   </h4>
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-border/60 text-xs text-muted-foreground flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 font-medium">
-                    <Calendar className="h-3.5 w-3.5 text-primary" />
-                    <span>
+                {/* Bottom Bar: Dates + Edit & Resubmit Button */}
+                <div className="mt-4 pt-3 border-t border-border/60 text-xs text-muted-foreground flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 font-medium min-w-0 truncate">
+                    <Calendar className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                    <span className="truncate">
                       {ev.event_start} to {ev.event_end}
                     </span>
                   </div>
+
+                  {/* Edit and Resubmit Button */}
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditModal(ev)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold border border-orange-200 transition-all hover:scale-102 cursor-pointer flex-shrink-0"
+                    title="Edit and resubmit updated details to Admin"
+                  >
+                    <Edit3 className="h-3.5 w-3.5" />
+                    <span>Edit</span>
+                  </button>
                 </div>
               </div>
             ))}
@@ -435,7 +506,7 @@ export function ConductedEventsView({
         )}
       </div>
 
-      {/* Add New Event Modal */}
+      {/* Add / Edit Event Modal */}
       {isModalOpen && (
         <div
           role="dialog"
@@ -450,13 +521,18 @@ export function ConductedEventsView({
                   {club.name} • {forumName}
                 </span>
                 <h3 className="text-xl sm:text-2xl font-black text-foreground">
-                  Add New Event on {forumName}
+                  {editingEventId ? `Edit & Resubmit Event on ${forumName}` : `Add New Event on ${forumName}`}
                 </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {editingEventId
+                    ? "Modify details below and resubmit. Your update will replace the previous submission in Admin."
+                    : "Fill in the event details and submit to the Student Council Admin."}
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                className="rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -469,16 +545,19 @@ export function ConductedEventsView({
                   <CheckCircle2 className="h-10 w-10" />
                 </div>
                 <h4 className="text-xl font-bold text-foreground">
-                  Event Submitted to Admin Successfully!
+                  {editingEventId
+                    ? "Event Updated & Resubmitted Successfully!"
+                    : "Event Submitted to Admin Successfully!"}
                 </h4>
                 <p className="text-sm text-muted-foreground max-w-md mx-auto">
-                  Your event submission for <strong>{forumName}</strong> has been forwarded to the
-                  Student Council Administrator for verification and Excel recording.
+                  {editingEventId
+                    ? "Your changes have been updated in both the Student Portal and Admin Review Console in place."
+                    : `Your event submission for ${forumName} has been forwarded to the Student Council Administrator for verification and Excel recording.`}
                 </p>
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="rounded-xl bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-colors"
+                  className="rounded-xl bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
                 >
                   Done
                 </button>
@@ -508,7 +587,7 @@ export function ConductedEventsView({
                   />
                 </div>
 
-                {/* Dates From and To as requested */}
+                {/* Dates From and To */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-foreground mb-1.5">
@@ -536,10 +615,10 @@ export function ConductedEventsView({
                   </div>
                 </div>
 
-                {/* Resource Person names as requested */}
+                {/* Resource Person names */}
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-foreground mb-1.5">
-                    Resource Person Names & Designations *
+                    Resource Person Names &amp; Designations *
                   </label>
                   <textarea
                     required
@@ -588,20 +667,37 @@ export function ConductedEventsView({
                   </div>
                 </div>
 
-                {/* Event Report format like PDF, Word as requested */}
+                {/* Event Report format (PDF / Word) */}
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-foreground mb-1.5">
                     Event Report Format (PDF / Word) *
                   </label>
+
+                  {/* Show existing report indicator if editing */}
+                  {editingEventId && existingReportName && !reportFile && (
+                    <div className="mb-2 p-2.5 rounded-xl bg-orange-50 border border-orange-200 text-xs flex items-center justify-between">
+                      <span className="font-semibold text-orange-950 truncate max-w-[340px]">
+                        Current Report: <strong>{existingReportName}</strong>
+                      </span>
+                      <span className="text-[11px] text-orange-700 bg-white px-2 py-0.5 rounded-md border border-orange-200 font-bold">
+                        Kept as-is
+                      </span>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-3">
                     <label className="flex-1 flex items-center justify-center gap-2 border-2 border-dashed border-border rounded-xl p-4 cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors">
                       <Upload className="h-5 w-5 text-primary" />
                       <span className="text-xs sm:text-sm font-semibold text-foreground">
-                        {reportFile ? reportFile.name : "Choose Report (.pdf, .doc, .docx)"}
+                        {reportFile
+                          ? reportFile.name
+                          : editingEventId
+                          ? "Upload new report to replace existing"
+                          : "Choose Report (.pdf, .doc, .docx)"}
                       </span>
                       <input
                         type="file"
-                        required
+                        required={!editingEventId && !existingReportName}
                         accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                         onChange={(e) => setReportFile(e.target.files?.[0] || null)}
                         className="hidden"
@@ -611,7 +707,7 @@ export function ConductedEventsView({
                       <button
                         type="button"
                         onClick={() => setReportFile(null)}
-                        className="text-xs text-destructive hover:underline"
+                        className="text-xs text-destructive hover:underline cursor-pointer"
                       >
                         Remove
                       </button>
@@ -622,21 +718,37 @@ export function ConductedEventsView({
                   </p>
                 </div>
 
-                {/* Event Photos upload in any format like .jpg (their choice how many photos) */}
+                {/* Event Photos Upload */}
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="text-xs font-bold uppercase tracking-wider text-foreground">
                       Event Photos (.jpg, .jpeg, .png, etc.)
                     </label>
                     <span className="text-[11px] text-muted-foreground font-medium">
-                      {photoFiles.length} / 20 selected
+                      {photoFiles.length > 0
+                        ? `${photoFiles.length} new photos selected`
+                        : editingEventId && existingPhotoPaths.length > 0
+                        ? `${existingPhotoPaths.length} existing photos kept`
+                        : "0 selected"}
                     </span>
                   </div>
+
+                  {/* Show existing photos indicator if editing */}
+                  {editingEventId && existingPhotoPaths.length > 0 && photoFiles.length === 0 && (
+                    <div className="mb-2 p-2.5 rounded-xl bg-orange-50 border border-orange-200 text-xs flex items-center justify-between">
+                      <span className="font-semibold text-orange-950">
+                        {existingPhotoPaths.length} photos currently attached ({existingPhotoNames.slice(0, 2).join(", ")}...)
+                      </span>
+                      <span className="text-[11px] text-orange-700 bg-white px-2 py-0.5 rounded-md border border-orange-200 font-bold">
+                        Kept as-is
+                      </span>
+                    </div>
+                  )}
 
                   <label className="flex flex-col items-center justify-center border-2 border-dashed border-border rounded-xl p-4 cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors text-center">
                     <ImageIcon className="h-6 w-6 text-primary mb-1" />
                     <span className="text-xs sm:text-sm font-semibold text-foreground">
-                      Click to choose event photos (multiple allowed)
+                      {editingEventId ? "Click to upload replacement/new photos" : "Click to choose event photos (multiple allowed)"}
                     </span>
                     <span className="text-[11px] text-muted-foreground mt-0.5">
                       Upload stage, audience, or ceremonial pictures in any image format
@@ -662,7 +774,7 @@ export function ConductedEventsView({
                           <button
                             type="button"
                             onClick={() => removePhoto(idx)}
-                            className="text-muted-foreground hover:text-destructive"
+                            className="text-muted-foreground hover:text-destructive cursor-pointer"
                           >
                             ×
                           </button>
@@ -672,29 +784,29 @@ export function ConductedEventsView({
                   )}
                 </div>
 
-                {/* Submit to Admin Button as requested */}
+                {/* Submit / Resubmit to Admin Button */}
                 <div className="pt-4 border-t border-border flex items-center justify-end gap-3">
                   <button
                     type="button"
                     onClick={() => setIsModalOpen(false)}
-                    className="rounded-xl px-4 py-2.5 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
+                    className="rounded-xl px-4 py-2.5 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground shadow-md hover:bg-primary/90 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground shadow-md hover:bg-primary/90 transition-all disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                   >
                     {submitting ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        <span>Submitting to Admin...</span>
+                        <span>{editingEventId ? "Updating in Admin..." : "Submitting to Admin..."}</span>
                       </>
                     ) : (
                       <>
                         <CheckCircle2 className="h-4 w-4" />
-                        <span>Submit to Admin</span>
+                        <span>{editingEventId ? "Update & Resubmit Event" : "Submit to Admin"}</span>
                       </>
                     )}
                   </button>

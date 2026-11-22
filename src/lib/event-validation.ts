@@ -37,6 +37,7 @@ export const eventDetailsSchema = z.object(eventDetailsShape).superRefine(addEve
 
 export const eventSubmissionSchema = z
   .object({
+    id: z.string().optional(),
     ...eventDetailsShape,
     reportObjectPath: z.string().min(1).max(500),
     reportFileName: z.string().trim().min(1).max(180),

@@ -405,7 +405,7 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
                   {/* Event Card Top Bar */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-border/80">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="text-xs font-black text-primary px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20">
                           Event #{idx + 1}
                         </span>
@@ -413,6 +413,11 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
                           <Clock className="h-3 w-3" />
                           Submitted: {new Date(ev.created_at).toLocaleDateString()}
                         </span>
+                        {ev.updated_at && (
+                          <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                            Updated: {new Date(ev.updated_at).toLocaleDateString()}
+                          </span>
+                        )}
                       </div>
                       <h3 className="mt-1.5 text-lg sm:text-xl font-bold text-foreground">
                         {ev.event_name}

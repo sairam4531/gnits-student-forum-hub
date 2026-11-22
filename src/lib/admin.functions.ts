@@ -67,6 +67,7 @@ export interface AdminEventRecord {
   photo_object_paths: string[];
   photo_file_names: string[];
   created_at: string;
+  updated_at?: string | undefined;
   report_download_url?: string | undefined;
   photo_download_urls?: string[] | undefined;
 }
