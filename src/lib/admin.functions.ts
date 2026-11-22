@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import type { Database } from "@/integrations/supabase/types";
 import { isKnownForum } from "@/lib/event-validation";
-import { getLocalEvents } from "@/lib/local-events-store";
+import { getLocalEvents, deleteLocalEvent } from "@/lib/local-events-store";
 
 const SESSION_COOKIE_NAME = "gnits_admin_session";
 const SESSION_SECRET =
@@ -318,3 +318,25 @@ export const getAllAdminEventsServerFn = createServerFn({ method: "GET" }).handl
 
   return allRecords;
 });
+
+// 8. Delete Event as Administrator
+export const deleteAdminEventServerFn = createServerFn({ method: "POST" })
+  .validator((input: { id: string }) => input)
+  .handler(async ({ data }) => {
+    const token = getCookie(SESSION_COOKIE_NAME);
+    const session = verifySession(token);
+    if (!session) throw new Error("Unauthorized. Admin access required.");
+
+    deleteLocalEvent(data.id);
+
+    try {
+      if (process.env["SUPABASE_SERVICE_ROLE_KEY"]) {
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        await supabaseAdmin.from("student_forum_events").delete().eq("id", data.id);
+      }
+    } catch (err) {
+      console.warn("Supabase event delete note:", err);
+    }
+
+    return { success: true, deletedId: data.id };
+  });

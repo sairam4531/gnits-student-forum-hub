@@ -79,6 +79,29 @@ export function saveLocalEvent(event: AdminEventRecord): void {
   }
 }
 
+export function deleteLocalEvent(id: string): void {
+  const events = getLocalEvents().filter((e) => e.id !== id);
+  globalThis.__gnitsEventsStore = events;
+
+  // Write to /tmp
+  try {
+    if (fs.existsSync(TMP_EVENTS_FILE)) {
+      fs.writeFileSync(TMP_EVENTS_FILE, JSON.stringify(events, null, 2), "utf-8");
+    }
+  } catch {
+    // ignore
+  }
+
+  // Write to local data
+  try {
+    if (fs.existsSync(LOCAL_EVENTS_FILE)) {
+      fs.writeFileSync(LOCAL_EVENTS_FILE, JSON.stringify(events, null, 2), "utf-8");
+    }
+  } catch {
+    // Expected on read-only serverless filesystems
+  }
+}
+
 export function saveFileLocally(relativePath: string, base64Data: string): string {
   try {
     const cleanPath = relativePath.replace(/^\/+/, "");

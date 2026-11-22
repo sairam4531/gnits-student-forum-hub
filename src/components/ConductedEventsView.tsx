@@ -288,6 +288,7 @@ export function ConductedEventsView({
         report_content_type: reportFile.type || "application/pdf",
         photo_object_paths: photoPaths,
         photo_file_names: photoNames,
+        photo_download_urls: safePhotoBase64s || [],
         created_at: new Date().toISOString(),
       };
       saveClientAdminEvent(clientAdminRecord);
