@@ -29,25 +29,23 @@ export const Route = createFileRoute("/")({
 function StudentAffairsPortalPage() {
   const navigate = useNavigate();
 
-  // 1. Initialize immediately with client persistent data so user's uploaded details are never lost
-  const initialClientData = getClientHomepageData();
+  // Initial state uses default structure to prevent SSR hydration mismatch (React #418)
+  const [photos, setPhotos] = useState<HomepagePhoto[]>([]);
+  const [featuredPhotos, setFeaturedPhotos] = useState<HomepagePhoto[]>([]);
+  const [featuredVideo, setFeaturedVideo] = useState<HomepageVideo | null>(null);
+  const [allVideos, setAllVideos] = useState<HomepageVideo[]>([]);
+  const [dean, setDean] = useState<DeanDetails>({
+    id: "dean-1",
+    name: "Dr. Aparna Patle",
+    designation: "Dean, Student Affairs & Professor",
+    profile_photo: "",
+    email: "aparna.patle@gnits.ac.in",
+    contact_number: "",
+    updated_at: new Date().toISOString(),
+  });
 
-  const [photos, setPhotos] = useState<HomepagePhoto[]>(initialClientData.photos);
-  const [featuredPhotos, setFeaturedPhotos] = useState<HomepagePhoto[]>(
-    initialClientData.photos.filter((p) => p.is_featured && p.is_active).slice(0, 4)
-  );
-  const [featuredVideo, setFeaturedVideo] = useState<HomepageVideo | null>(
-    initialClientData.videos.find((v) => v.is_featured && v.is_active) ||
-      initialClientData.videos[0] ||
-      null
-  );
-  const [allVideos, setAllVideos] = useState<HomepageVideo[]>(initialClientData.videos);
-  const [dean, setDean] = useState<DeanDetails>(initialClientData.dean);
-
-  const [allGalleryPhotos, setAllGalleryPhotos] = useState<HomepagePhoto[]>(
-    initialClientData.photos.filter((p) => p.is_active)
-  );
-  const [recentEvents, setRecentEvents] = useState<PublicEventRecord[]>(getClientEvents());
+  const [allGalleryPhotos, setAllGalleryPhotos] = useState<HomepagePhoto[]>([]);
+  const [recentEvents, setRecentEvents] = useState<PublicEventRecord[]>([]);
 
   // Modals & Drawers state
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -75,6 +73,9 @@ function StudentAffairsPortalPage() {
 
   // Load public data on mount & merge safely
   useEffect(() => {
+    // 1. Immediately hydrate with persistent client data (after SSR hydration)
+    refreshFromClientStore();
+
     async function loadData() {
       try {
         const homeData = await getPublicHomepageDataServerFn();

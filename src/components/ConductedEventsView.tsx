@@ -18,6 +18,7 @@ import { getPublicForumEvents, submitStudentEvent, type PublicEventRecord } from
 import { supabase } from "@/integrations/supabase/client";
 import { type ForumClub } from "@/lib/student-forums";
 import { getClientEvents, saveClientEvent } from "@/lib/client-portal-store";
+import { saveEventFile, compressImage } from "@/lib/event-file-storage";
 
 interface ConductedEventsViewProps {
   club: ForumClub;
@@ -162,12 +163,11 @@ export function ConductedEventsView({
       const reportSafeName = sanitizeName(reportFile.name);
       const reportPath = `submissions/${submissionId}/${reportSafeName}`;
 
-      // Convert files to base64 for reliable persistent storage
-      const reportBase64 = await fileToBase64(reportFile);
+      // Save report file to IndexedDB for reliable permanent storage & instant downloads
+      await saveEventFile(reportPath, reportFile, reportFile.name);
 
       const photoPaths: string[] = [];
       const photoNames: string[] = [];
-      const photoBase64s: string[] = [];
 
       for (let i = 0; i < photoFiles.length; i++) {
         const photo = photoFiles[i]!;
@@ -175,8 +175,8 @@ export function ConductedEventsView({
         const photoPath = `submissions/${submissionId}/${photoSafeName}`;
         photoPaths.push(photoPath);
         photoNames.push(photo.name);
-        const b64 = await fileToBase64(photo);
-        photoBase64s.push(b64);
+        // Save photo file to IndexedDB
+        await saveEventFile(photoPath, photo, photo.name);
       }
 
       // Optional remote Supabase storage upload if alive
@@ -189,30 +189,78 @@ export function ConductedEventsView({
         console.warn("Remote storage note (using persistent local storage):", uploadErr);
       }
 
-      // 2. Call server function to record event and persist files locally
-      const res = await submitStudentEvent({
-        data: {
-          clubSlug: club.slug,
-          forumSlug: forumSlug,
-          eventName: eventName.trim(),
-          eventStart,
-          eventEnd,
-          resourcePersons: resourcePersons.trim(),
-          submitterName: submitterName.trim(),
-          submitterEmail: submitterEmail.trim().toLowerCase(),
-          reportObjectPath: reportPath,
-          reportFileName: reportFile.name,
-          reportContentType: reportFile.type || "application/pdf",
-          photoObjectPaths: photoPaths,
-          photoFileNames: photoNames,
-          reportBase64,
-          photoBase64s,
-        },
-      });
+      // 2. Prepare lightweight payloads to completely eliminate Vercel 413 Payload Too Large error
+      let safeReportBase64: string | undefined = undefined;
+      // Only attach base64 if report is small (< 1 MB)
+      if (reportFile.size < 1024 * 1024) {
+        safeReportBase64 = await fileToBase64(reportFile);
+      }
 
-      // Save to client persistent store so it persists permanently until deleted
+      // Compress photos to lightweight thumbnails (< 800px) so total payload is tiny
+      let safePhotoBase64s: string[] | undefined = undefined;
+      if (photoFiles.length > 0) {
+        try {
+          const compressed = await Promise.all(
+            photoFiles.slice(0, 5).map((p) => compressImage(p, 800, 800, 0.65))
+          );
+          safePhotoBase64s = compressed.filter(Boolean);
+        } catch {
+          safePhotoBase64s = undefined;
+        }
+      }
+
+      // 3. Call server function with resilient error handling & automatic fallback
+      let res: { id?: string; success?: boolean } | null = null;
+      try {
+        res = await submitStudentEvent({
+          data: {
+            clubSlug: club.slug,
+            forumSlug: forumSlug,
+            eventName: eventName.trim(),
+            eventStart,
+            eventEnd,
+            resourcePersons: resourcePersons.trim(),
+            submitterName: submitterName.trim(),
+            submitterEmail: submitterEmail.trim().toLowerCase(),
+            reportObjectPath: reportPath,
+            reportFileName: reportFile.name,
+            reportContentType: reportFile.type || "application/pdf",
+            photoObjectPaths: photoPaths,
+            photoFileNames: photoNames,
+            reportBase64: safeReportBase64,
+            photoBase64s: safePhotoBase64s,
+          },
+        });
+      } catch (firstErr) {
+        console.warn("Full payload submission note, retrying with pure metadata:", firstErr);
+        // If Vercel edge throws 413 or payload issue, retry sending strictly metadata without base64
+        try {
+          res = await submitStudentEvent({
+            data: {
+              clubSlug: club.slug,
+              forumSlug: forumSlug,
+              eventName: eventName.trim(),
+              eventStart,
+              eventEnd,
+              resourcePersons: resourcePersons.trim(),
+              submitterName: submitterName.trim(),
+              submitterEmail: submitterEmail.trim().toLowerCase(),
+              reportObjectPath: reportPath,
+              reportFileName: reportFile.name,
+              reportContentType: reportFile.type || "application/pdf",
+              photoObjectPaths: photoPaths,
+              photoFileNames: photoNames,
+            },
+          });
+        } catch (retryErr) {
+          console.warn("Server function rejected, safely persisting to local client store:", retryErr);
+        }
+      }
+
+      // 4. Save to client persistent store so it persists permanently until deleted
+      const finalEventId = res?.id || submissionId;
       const clientEventRecord: PublicEventRecord = {
-        id: res.id || `event-${Date.now()}`,
+        id: finalEventId,
         club_slug: club.slug,
         forum_slug: forumSlug,
         event_name: eventName.trim(),

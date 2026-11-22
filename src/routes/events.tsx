@@ -33,7 +33,7 @@ function DedicatedEventPage() {
   const navigate = useNavigate();
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [recentEvents, setRecentEvents] = useState<PublicEventRecord[]>(() => getClientEvents());
+  const [recentEvents, setRecentEvents] = useState<PublicEventRecord[]>([]);
 
   const clubSlug = search.club || "technical-events";
   const forumName = search.forum || "ISTE";

@@ -65,7 +65,7 @@ function AdminPage() {
 
   // Active Admin Tab
   const [activeTab, setActiveTab] = useState<"events" | "photos" | "videos" | "dean">("events");
-  const [homepageData, setHomepageData] = useState<HomepageDataStore | null>(() => getClientHomepageData());
+  const [homepageData, setHomepageData] = useState<HomepageDataStore | null>(null);
 
   // Forum selection state
   const [selectedClub, setSelectedClub] = useState<ForumClub | null>(null);
@@ -91,6 +91,7 @@ function AdminPage() {
 
   // Check initial session
   useEffect(() => {
+    setHomepageData(getClientHomepageData());
     async function checkAuth() {
       try {
         const session = await getAdminSessionServerFn();

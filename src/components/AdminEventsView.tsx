@@ -17,6 +17,7 @@ import {
 import * as XLSX from "xlsx";
 import { getAdminForumEventsServerFn, type AdminEventRecord } from "@/lib/admin.functions";
 import { type ForumClub } from "@/lib/student-forums";
+import { getEventFileUrl } from "@/lib/event-file-storage";
 
 interface AdminEventsViewProps {
   club: ForumClub;
@@ -114,6 +115,25 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
 
     worksheet["!cols"] = Object.keys(data[0] || {}).map(() => ({ wch: 25 }));
     XLSX.writeFile(workbook, `GNITS_${forumName}_All_Submitted_Events.xlsx`);
+  };
+
+  // Handle download of report checking local IndexedDB first
+  const handleDownloadReport = async (ev: AdminEventRecord) => {
+    if (ev.report_object_path) {
+      const localUrl = await getEventFileUrl(ev.report_object_path);
+      if (localUrl) {
+        const a = document.createElement("a");
+        a.href = localUrl;
+        a.download = ev.report_file_name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        return;
+      }
+    }
+    if (ev.report_download_url) {
+      window.open(ev.report_download_url, "_blank");
+    }
   };
 
   return (
@@ -299,22 +319,14 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
                         {ev.report_content_type || "Document"}
                       </span>
                     </div>
-                    {ev.report_download_url ? (
-                      <a
-                        href={ev.report_download_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        download={ev.report_file_name}
-                        className="ml-auto sm:ml-2 inline-flex items-center gap-1.5 rounded-lg bg-primary/10 text-primary px-3 py-1.5 text-xs font-bold hover:bg-primary/20 transition-colors"
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        <span>Download Report</span>
-                      </a>
-                    ) : (
-                      <span className="text-xs text-muted-foreground italic">
-                        Stored in Supabase
-                      </span>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadReport(ev)}
+                      className="ml-auto sm:ml-2 inline-flex items-center gap-1.5 rounded-lg bg-primary/10 text-primary px-3 py-1.5 text-xs font-bold hover:bg-primary/20 transition-colors cursor-pointer"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      <span>Download Report</span>
+                    </button>
                   </div>
 
                   {/* Photos count & previews */}
