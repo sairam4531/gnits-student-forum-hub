@@ -180,8 +180,10 @@ export function StudentAffairsHeader({ onOpenDrawer }: StudentAffairsHeaderProps
         </div>
 
         {/* Right Boundary: 28 Years of Excellence Logo */}
-        <div className="flex-shrink-0 z-20 bg-[#2563eb] pl-2">
-          <AnniversaryLogo className="h-13 w-13 sm:h-16 sm:w-16" />
+        <div className="flex-shrink-0 z-20 bg-[#2563eb] pl-2 flex items-center justify-center">
+          <div className="h-13 w-13 sm:h-16 sm:w-16 flex items-center justify-center flex-shrink-0">
+            <AnniversaryLogo className="h-full w-full" />
+          </div>
         </div>
       </div>
     </header>
