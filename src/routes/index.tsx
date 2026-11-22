@@ -89,20 +89,10 @@ function StudentAffairsPortalPage() {
       {/* A. Header Section matching reference image */}
       <StudentAffairsHeader onOpenDrawer={() => setIsDrawerOpen(true)} />
 
-      {/* B. Main Dashboard Section with Blue-toned Campus Background */}
-      <main className="flex-1 relative">
-        {/* Campus Background Image & Gradient Overlay */}
-        <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-          <img
-            src="/assets/student-affairs-reference.jpg"
-            alt="GNITS Campus"
-            className="w-full h-full object-cover object-top opacity-85 filter brightness-105"
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-blue-900/30 via-transparent to-blue-950/40" />
-        </div>
-
+      {/* B. Main Dashboard Section */}
+      <main className="flex-1 bg-slate-100">
         {/* Dashboard Content Container */}
-        <div className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-10 md:py-12">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-10 md:py-12">
           {/* Top Section: Daily Photos (Left) and College Video (Right) Side by Side */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 sm:gap-8 items-stretch">
             {/* Left Section – Daily Photos (5 cols on md/lg) */}
