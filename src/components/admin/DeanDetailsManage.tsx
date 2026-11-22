@@ -1,8 +1,9 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { User, Upload, Check, AlertCircle, Loader2, Sparkles } from "lucide-react";
 import { updateDeanDetailsAdminServerFn } from "@/lib/homepage.functions";
 import type { DeanDetails } from "@/lib/local-homepage-store";
 import { DeanDetailsCard } from "@/components/DeanDetailsCard";
+import { saveClientDeanDetails, getClientHomepageData } from "@/lib/client-portal-store";
 
 interface DeanDetailsManageProps {
   dean: DeanDetails;
@@ -10,11 +11,24 @@ interface DeanDetailsManageProps {
 }
 
 export function DeanDetailsManage({ dean, onRefresh }: DeanDetailsManageProps) {
-  const [name, setName] = useState(dean.name);
-  const [designation, setDesignation] = useState(dean.designation);
-  const [email, setEmail] = useState(dean.email);
-  const [contactNumber, setContactNumber] = useState(dean.contact_number);
-  const [profilePhoto, setProfilePhoto] = useState(dean.profile_photo || "");
+  const initialDean = getClientHomepageData().dean || dean;
+
+  const [name, setName] = useState(initialDean.name || dean.name);
+  const [designation, setDesignation] = useState(initialDean.designation || dean.designation);
+  const [email, setEmail] = useState(initialDean.email || dean.email);
+  const [contactNumber, setContactNumber] = useState(initialDean.contact_number || dean.contact_number);
+  const [profilePhoto, setProfilePhoto] = useState(initialDean.profile_photo || dean.profile_photo || "");
+
+  useEffect(() => {
+    const current = getClientHomepageData().dean;
+    if (current && (current.name !== dean.name || current.email !== dean.email)) {
+      setName(current.name);
+      setDesignation(current.designation);
+      setEmail(current.email);
+      setContactNumber(current.contact_number);
+      setProfilePhoto(current.profile_photo || "");
+    }
+  }, [dean]);
 
   // Photo upload
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
@@ -47,6 +61,20 @@ export function DeanDetailsManage({ dean, onRefresh }: DeanDetailsManageProps) {
     setSaving(true);
 
     try {
+      const updatedDean: DeanDetails = {
+        id: dean.id || "dean-1",
+        name: name.trim(),
+        designation: designation.trim(),
+        email: email.trim(),
+        contact_number: contactNumber.trim(),
+        profile_photo: profilePhoto || "",
+        updated_at: new Date().toISOString(),
+      };
+
+      // 1. Instantly save to persistent client storage so it is NEVER lost on server reload
+      saveClientDeanDetails(updatedDean);
+
+      // 2. Persist to server store
       await updateDeanDetailsAdminServerFn({
         data: {
           name: name.trim(),

@@ -38,6 +38,10 @@ import {
 } from "@/lib/homepage.functions";
 import type { HomepageDataStore } from "@/lib/local-homepage-store";
 import { type ForumClub } from "@/lib/student-forums";
+import {
+  getClientHomepageData,
+  mergeServerWithClient,
+} from "@/lib/client-portal-store";
 import * as XLSX from "xlsx";
 
 export const Route = createFileRoute("/admin")({
@@ -61,7 +65,7 @@ function AdminPage() {
 
   // Active Admin Tab
   const [activeTab, setActiveTab] = useState<"events" | "photos" | "videos" | "dean">("events");
-  const [homepageData, setHomepageData] = useState<HomepageDataStore | null>(null);
+  const [homepageData, setHomepageData] = useState<HomepageDataStore | null>(() => getClientHomepageData());
 
   // Forum selection state
   const [selectedClub, setSelectedClub] = useState<ForumClub | null>(null);
@@ -73,9 +77,15 @@ function AdminPage() {
   const loadHomepageData = async () => {
     try {
       const data = await getAdminHomepageDataServerFn();
-      if (data) setHomepageData(data);
+      if (data) {
+        const merged = mergeServerWithClient(data);
+        setHomepageData(merged);
+      } else {
+        setHomepageData(getClientHomepageData());
+      }
     } catch (err) {
-      console.warn("Could not load homepage data:", err);
+      console.warn("Could not load homepage data, using persistent client store:", err);
+      setHomepageData(getClientHomepageData());
     }
   };
 
@@ -490,7 +500,7 @@ function AdminPage() {
         {activeTab === "photos" && (
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-8">
             <DailyPhotosManage
-              photos={homepageData?.photos || []}
+              photos={homepageData?.photos || getClientHomepageData().photos}
               onRefresh={loadHomepageData}
             />
           </div>
@@ -499,16 +509,16 @@ function AdminPage() {
         {activeTab === "videos" && (
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-8">
             <CollegeVideosManage
-              videos={homepageData?.videos || []}
+              videos={homepageData?.videos || getClientHomepageData().videos}
               onRefresh={loadHomepageData}
             />
           </div>
         )}
 
-        {activeTab === "dean" && homepageData?.dean && (
+        {activeTab === "dean" && (
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-8">
             <DeanDetailsManage
-              dean={homepageData.dean}
+              dean={homepageData?.dean || getClientHomepageData().dean}
               onRefresh={loadHomepageData}
             />
           </div>

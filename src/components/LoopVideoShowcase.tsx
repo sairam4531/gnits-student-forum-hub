@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import type { HomepageVideo, HomepagePhoto } from "@/lib/local-homepage-store";
 import { getLocalVideoBlobUrl } from "@/lib/video-storage";
+import { getClientHomepageData } from "@/lib/client-portal-store";
 
 interface LoopVideoShowcaseProps {
   video: HomepageVideo | null;
@@ -63,10 +64,16 @@ export function LoopVideoShowcase({
     if (video) setCurrentVideo(video);
   }, [video]);
 
-  // Priority: 1. Local uploaded video Blob -> 2. Server video URL -> 3. Fallback video
+  // Priority: 1. Local uploaded video Blob -> 2. Server/Client featured video -> 3. Fallback video
+  const clientStoreVideo =
+    getClientHomepageData().videos.find((v) => v.is_featured && v.is_active) ||
+    getClientHomepageData().videos[0];
+
   const activeVideoUrl =
     localVideoUrl ||
-    currentVideo?.video_url ||
+    (currentVideo && currentVideo.video_url !== "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+      ? currentVideo.video_url
+      : clientStoreVideo?.video_url || currentVideo?.video_url) ||
     "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
 
   // Watch for native fullscreen changes

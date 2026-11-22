@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { StudentAffairsHeader } from "@/components/StudentAffairsHeader";
 import { LoopVideoShowcase } from "@/components/LoopVideoShowcase";
 import { DeanDetailsCard } from "@/components/DeanDetailsCard";
@@ -15,6 +15,12 @@ import {
 } from "@/lib/events.functions";
 import type { HomepagePhoto, HomepageVideo, DeanDetails } from "@/lib/local-homepage-store";
 import type { ForumClub } from "@/lib/student-forums";
+import {
+  getClientHomepageData,
+  mergeServerWithClient,
+  getClientEvents,
+  saveClientEvent,
+} from "@/lib/client-portal-store";
 
 export const Route = createFileRoute("/")({
   component: StudentAffairsPortalPage,
@@ -23,56 +29,131 @@ export const Route = createFileRoute("/")({
 function StudentAffairsPortalPage() {
   const navigate = useNavigate();
 
-  // Homepage content states
-  const [photos, setPhotos] = useState<HomepagePhoto[]>([]);
-  const [featuredPhotos, setFeaturedPhotos] = useState<HomepagePhoto[]>([]);
-  const [featuredVideo, setFeaturedVideo] = useState<HomepageVideo | null>(null);
-  const [allVideos, setAllVideos] = useState<HomepageVideo[]>([]);
-  const [dean, setDean] = useState<DeanDetails>({
-    id: "dean-1",
-    name: "Dr. Aparna Patle",
-    designation: "Dean, Student Affairs & Professor",
-    profile_photo: "",
-    email: "aparna.patle@gnits.ac.in",
-    contact_number: "",
-    updated_at: new Date().toISOString(),
-  });
+  // 1. Initialize immediately with client persistent data so user's uploaded details are never lost
+  const initialClientData = getClientHomepageData();
 
-  const [allGalleryPhotos, setAllGalleryPhotos] = useState<HomepagePhoto[]>([]);
-  const [recentEvents, setRecentEvents] = useState<PublicEventRecord[]>([]);
+  const [photos, setPhotos] = useState<HomepagePhoto[]>(initialClientData.photos);
+  const [featuredPhotos, setFeaturedPhotos] = useState<HomepagePhoto[]>(
+    initialClientData.photos.filter((p) => p.is_featured && p.is_active).slice(0, 4)
+  );
+  const [featuredVideo, setFeaturedVideo] = useState<HomepageVideo | null>(
+    initialClientData.videos.find((v) => v.is_featured && v.is_active) ||
+      initialClientData.videos[0] ||
+      null
+  );
+  const [allVideos, setAllVideos] = useState<HomepageVideo[]>(initialClientData.videos);
+  const [dean, setDean] = useState<DeanDetails>(initialClientData.dean);
+
+  const [allGalleryPhotos, setAllGalleryPhotos] = useState<HomepagePhoto[]>(
+    initialClientData.photos.filter((p) => p.is_active)
+  );
+  const [recentEvents, setRecentEvents] = useState<PublicEventRecord[]>(getClientEvents());
 
   // Modals & Drawers state
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
 
-  // Load public data on mount
+  // Sync state from client store
+  const refreshFromClientStore = useCallback(() => {
+    const current = getClientHomepageData();
+    const activePhotos = current.photos.filter((p) => p.is_active);
+    const activeVideos = current.videos.filter((v) => v.is_active);
+    const fVideo = activeVideos.find((v) => v.is_featured) || activeVideos[0] || null;
+
+    setPhotos(activePhotos);
+    setFeaturedPhotos(
+      activePhotos.filter((p) => p.is_featured).slice(0, 4).length > 0
+        ? activePhotos.filter((p) => p.is_featured).slice(0, 4)
+        : activePhotos.slice(0, 4)
+    );
+    setFeaturedVideo(fVideo);
+    setAllVideos(activeVideos);
+    setDean(current.dean);
+    setAllGalleryPhotos(activePhotos);
+    setRecentEvents(getClientEvents());
+  }, []);
+
+  // Load public data on mount & merge safely
   useEffect(() => {
     async function loadData() {
       try {
         const homeData = await getPublicHomepageDataServerFn();
         if (homeData) {
-          setPhotos(homeData.photos || []);
-          setFeaturedPhotos(homeData.featuredPhotos || []);
-          setFeaturedVideo(homeData.featuredVideo || null);
-          setAllVideos(
-            homeData.allVideos || (homeData.featuredVideo ? [homeData.featuredVideo] : []),
+          // Perform smart merge to ensure user-uploaded items & edits are NEVER overwritten
+          const merged = mergeServerWithClient({
+            photos: homeData.photos || [],
+            videos: homeData.allVideos || (homeData.featuredVideo ? [homeData.featuredVideo] : []),
+            dean: homeData.dean || dean,
+          });
+
+          const activePhotos = merged.photos.filter((p) => p.is_active);
+          const activeVideos = merged.videos.filter((v) => v.is_active);
+          const fVideo = activeVideos.find((v) => v.is_featured) || activeVideos[0] || null;
+
+          setPhotos(activePhotos);
+          setFeaturedPhotos(
+            activePhotos.filter((p) => p.is_featured).slice(0, 4).length > 0
+              ? activePhotos.filter((p) => p.is_featured).slice(0, 4)
+              : activePhotos.slice(0, 4)
           );
-          if (homeData.dean) setDean(homeData.dean);
+          setFeaturedVideo(fVideo);
+          setAllVideos(activeVideos);
+          setDean(merged.dean);
+          setAllGalleryPhotos(activePhotos);
         }
 
         const events = await getAllPublicEventsServerFn();
-        if (events) setRecentEvents(events);
+        if (events && events.length > 0) {
+          const clientEvs = getClientEvents();
+          const combined = [...clientEvs];
+          for (const ev of events) {
+            if (!combined.some((c) => c.id === ev.id)) {
+              combined.push(ev);
+              saveClientEvent(ev);
+            }
+          }
+          setRecentEvents(combined);
+        }
 
         const allPhotos = await getAllPublicPhotosServerFn();
-        if (allPhotos) setAllGalleryPhotos(allPhotos);
+        if (allPhotos && allPhotos.length > 0) {
+          setAllGalleryPhotos((prev) => (prev.length > 0 ? prev : allPhotos));
+        }
       } catch (err) {
-        console.warn("Could not load homepage data from server:", err);
+        console.warn("Could not load homepage data from server, using persistent store:", err);
+        refreshFromClientStore();
       }
     }
-    loadData();
-  }, []);
 
-  // When clicking any event (like ISTE), navigate to dedicated new page - DO NOT display on dashboard
+    loadData();
+
+    // Listen for live updates across tabs or admin edits
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+        bc = new BroadcastChannel("gnits_portal_sync_channel");
+        bc.onmessage = () => {
+          refreshFromClientStore();
+        };
+      }
+    } catch {
+      // ignore
+    }
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key?.startsWith("GNITS_")) {
+        refreshFromClientStore();
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      bc?.close();
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [refreshFromClientStore, dean]);
+
+  // When clicking any event (like ISTE), navigate to dedicated new page
   const handleSelectForum = (club: ForumClub, forumName: string, forumSlug: string) => {
     navigate({
       to: "/events",

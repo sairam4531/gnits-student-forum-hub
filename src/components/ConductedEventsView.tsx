@@ -14,9 +14,10 @@ import {
   X,
   Upload,
 } from "lucide-react";
-import { getPublicForumEvents, submitStudentEvent } from "@/lib/events.functions";
+import { getPublicForumEvents, submitStudentEvent, type PublicEventRecord } from "@/lib/events.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { type ForumClub } from "@/lib/student-forums";
+import { getClientEvents, saveClientEvent } from "@/lib/client-portal-store";
 
 interface ConductedEventsViewProps {
   club: ForumClub;
@@ -81,11 +82,21 @@ export function ConductedEventsView({
           forumSlug: forumSlug,
         },
       });
-      setEvents(data as PublicEvent[]);
+
+      // Combine with local client events so submitted events are never lost
+      const clientEvs = getClientEvents().filter(
+        (e) => e.club_slug === club.slug && e.forum_slug === forumSlug
+      );
+      const map = new Map<string, PublicEvent>();
+      (data as PublicEvent[]).forEach((e) => map.set(e.id, e));
+      clientEvs.forEach((e) => map.set(e.id, e as PublicEvent));
+      setEvents(Array.from(map.values()));
     } catch (err: unknown) {
       console.warn("Could not load public events:", err);
-      // Friendly fallback so user sees current state without broken screen
-      setEvents([]);
+      const clientEvs = getClientEvents().filter(
+        (e) => e.club_slug === club.slug && e.forum_slug === forumSlug
+      );
+      setEvents(clientEvs as PublicEvent[]);
     } finally {
       setLoading(false);
     }
@@ -179,7 +190,7 @@ export function ConductedEventsView({
       }
 
       // 2. Call server function to record event and persist files locally
-      await submitStudentEvent({
+      const res = await submitStudentEvent({
         data: {
           clubSlug: club.slug,
           forumSlug: forumSlug,
@@ -198,6 +209,19 @@ export function ConductedEventsView({
           photoBase64s,
         },
       });
+
+      // Save to client persistent store so it persists permanently until deleted
+      const clientEventRecord: PublicEventRecord = {
+        id: res.id || `event-${Date.now()}`,
+        club_slug: club.slug,
+        forum_slug: forumSlug,
+        event_name: eventName.trim(),
+        event_start: eventStart,
+        event_end: eventEnd,
+        created_at: new Date().toISOString(),
+        resource_persons: resourcePersons.trim(),
+      };
+      saveClientEvent(clientEventRecord);
 
       setSubmitSuccess(true);
       // Reset form

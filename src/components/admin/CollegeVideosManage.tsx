@@ -18,7 +18,12 @@ import {
   setFeaturedVideoAdminServerFn,
 } from "@/lib/homepage.functions";
 import type { HomepageVideo } from "@/lib/local-homepage-store";
-import { saveLocalVideoBlob } from "@/lib/video-storage";
+import { saveLocalVideoBlob, clearLocalVideoBlob } from "@/lib/video-storage";
+import {
+  saveClientVideo,
+  deleteClientVideo,
+  getClientHomepageData,
+} from "@/lib/client-portal-store";
 
 interface CollegeVideosManageProps {
   videos: HomepageVideo[];
@@ -100,7 +105,23 @@ export function CollegeVideosManage({ videos, onRefresh }: CollegeVideosManagePr
       // If a local video file was selected:
       if (videoFile) {
         // 1. Always save into browser IndexedDB so it plays instantly at full speed without hitting Vercel's 4.5MB limit
-        await saveLocalVideoBlob(videoFile, videoFile.name);
+        const blobUrl = await saveLocalVideoBlob(videoFile, videoFile.name);
+
+        const newVideoObj: HomepageVideo = {
+          id: editingVideo?.id || `video-${Date.now()}`,
+          title: videoFile.name.replace(/\.[^/.]+$/, ""),
+          description: "",
+          video_url: blobUrl || finalUrl || videoFile.name,
+          thumbnail_url: "",
+          is_active: true,
+          is_featured: true,
+          display_order: 1,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        // Instantly save to persistent client storage so it is NEVER lost on container restart
+        saveClientVideo(newVideoObj);
 
         // 2. If the file is small (under 3.5MB), also send to server store
         if (videoFile.size < 3.5 * 1024 * 1024) {
@@ -113,8 +134,8 @@ export function CollegeVideosManage({ videos, onRefresh }: CollegeVideosManagePr
 
           await saveVideoAdminServerFn({
             data: {
-              id: editingVideo?.id,
-              title: videoFile.name.replace(/\.[^/.]+$/, ""),
+              id: newVideoObj.id,
+              title: newVideoObj.title,
               video_url: finalUrl || videoFile.name,
               videoBase64: base64,
               videoFileName: videoFile.name,
@@ -128,8 +149,8 @@ export function CollegeVideosManage({ videos, onRefresh }: CollegeVideosManagePr
           // save the reference without the massive payload. The video is safely stored in IndexedDB.
           await saveVideoAdminServerFn({
             data: {
-              id: editingVideo?.id,
-              title: videoFile.name.replace(/\.[^/.]+$/, ""),
+              id: newVideoObj.id,
+              title: newVideoObj.title,
               video_url: finalUrl || videoFile.name,
               is_active: true,
               is_featured: true,
@@ -139,10 +160,25 @@ export function CollegeVideosManage({ videos, onRefresh }: CollegeVideosManagePr
         }
       } else {
         // Direct URL was provided
+        const newVideoObj: HomepageVideo = {
+          id: editingVideo?.id || `video-${Date.now()}`,
+          title: "GNITS Campus Video",
+          description: "",
+          video_url: finalUrl,
+          thumbnail_url: "",
+          is_active: true,
+          is_featured: true,
+          display_order: 1,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        saveClientVideo(newVideoObj);
+
         await saveVideoAdminServerFn({
           data: {
-            id: editingVideo?.id,
-            title: "GNITS Campus Video",
+            id: newVideoObj.id,
+            title: newVideoObj.title,
             video_url: finalUrl,
             is_active: true,
             is_featured: true,
@@ -171,6 +207,11 @@ export function CollegeVideosManage({ videos, onRefresh }: CollegeVideosManagePr
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this video?")) return;
     try {
+      // 1. Immediately delete from client persistent store and mark in deleted tracker
+      deleteClientVideo(id);
+      await clearLocalVideoBlob();
+
+      // 2. Notify server
       await deleteVideoAdminServerFn({ data: { id } });
       await onRefresh();
     } catch (err: unknown) {
@@ -180,6 +221,10 @@ export function CollegeVideosManage({ videos, onRefresh }: CollegeVideosManagePr
 
   const handleSetFeatured = async (id: string) => {
     try {
+      const currentVid = videos.find((v) => v.id === id);
+      if (currentVid) {
+        saveClientVideo({ ...currentVid, is_featured: true });
+      }
       await setFeaturedVideoAdminServerFn({ data: { id } });
       await onRefresh();
     } catch (err: unknown) {

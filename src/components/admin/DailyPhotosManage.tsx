@@ -19,6 +19,11 @@ import {
   togglePhotoStatusServerFn,
 } from "@/lib/homepage.functions";
 import type { HomepagePhoto } from "@/lib/local-homepage-store";
+import {
+  saveClientPhoto,
+  deleteClientPhoto,
+  getClientHomepageData,
+} from "@/lib/client-portal-store";
 
 interface DailyPhotosManageProps {
   photos: HomepagePhoto[];
@@ -112,16 +117,34 @@ export function DailyPhotosManage({ photos, onRefresh }: DailyPhotosManageProps)
         throw new Error("Please select an image to upload.");
       }
 
+      const finalImageUrl = imagePreviewUrl || editingPhoto?.image_url || "";
+      const newPhotoObj: HomepagePhoto = {
+        id: editingPhoto?.id || `photo-${Date.now()}`,
+        title: title.trim(),
+        description: description.trim(),
+        category,
+        image_url: finalImageUrl,
+        is_active: isActive,
+        is_featured: isFeatured,
+        display_order: Number(displayOrder),
+        created_at: editingPhoto?.created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      // 1. Instantly save to persistent client store so it is never deleted by container restart
+      saveClientPhoto(newPhotoObj);
+
+      // 2. Persist to server store
       await savePhotoAdminServerFn({
         data: {
-          id: editingPhoto?.id,
-          title: title.trim(),
-          description: description.trim(),
+          id: newPhotoObj.id,
+          title: newPhotoObj.title,
+          description: newPhotoObj.description,
           category,
           is_active: isActive,
           is_featured: isFeatured,
           display_order: Number(displayOrder),
-          image_url: editingPhoto?.image_url,
+          image_url: finalImageUrl,
           imageBase64: imageBase64 || undefined,
           imageFileName: imageFileName || undefined,
         },
@@ -139,6 +162,10 @@ export function DailyPhotosManage({ photos, onRefresh }: DailyPhotosManageProps)
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this photo?")) return;
     try {
+      // 1. Immediately delete from client persistent store & track in deleted list
+      deleteClientPhoto(id);
+
+      // 2. Delete on server
       await deletePhotoAdminServerFn({ data: { id } });
       await onRefresh();
     } catch (err: unknown) {
@@ -148,6 +175,14 @@ export function DailyPhotosManage({ photos, onRefresh }: DailyPhotosManageProps)
 
   const handleToggle = async (id: string, field: "is_active" | "is_featured", currentVal: boolean) => {
     try {
+      const currentPhoto = photos.find((p) => p.id === id);
+      if (currentPhoto) {
+        saveClientPhoto({
+          ...currentPhoto,
+          [field]: !currentVal,
+        });
+      }
+
       await togglePhotoStatusServerFn({
         data: { id, field, value: !currentVal },
       });

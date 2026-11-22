@@ -9,6 +9,7 @@ import {
   getAllPublicEventsServerFn,
   type PublicEventRecord,
 } from "@/lib/events.functions";
+import { getClientEvents, saveClientEvent } from "@/lib/client-portal-store";
 
 interface EventSearchState {
   club?: string;
@@ -32,7 +33,7 @@ function DedicatedEventPage() {
   const navigate = useNavigate();
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [recentEvents, setRecentEvents] = useState<PublicEventRecord[]>([]);
+  const [recentEvents, setRecentEvents] = useState<PublicEventRecord[]>(() => getClientEvents());
 
   const clubSlug = search.club || "technical-events";
   const forumName = search.forum || "ISTE";
@@ -46,9 +47,22 @@ function DedicatedEventPage() {
     async function loadEvents() {
       try {
         const events = await getAllPublicEventsServerFn();
-        if (events) setRecentEvents(events);
+        if (events && events.length > 0) {
+          const clientEvs = getClientEvents();
+          const combined = [...clientEvs];
+          for (const ev of events) {
+            if (!combined.some((c) => c.id === ev.id)) {
+              combined.push(ev);
+              saveClientEvent(ev);
+            }
+          }
+          setRecentEvents(combined);
+        } else {
+          setRecentEvents(getClientEvents());
+        }
       } catch (err) {
         console.warn("Could not load events:", err);
+        setRecentEvents(getClientEvents());
       }
     }
     loadEvents();
