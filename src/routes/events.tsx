@@ -19,9 +19,9 @@ interface EventSearchState {
 export const Route = createFileRoute("/events")({
   validateSearch: (search: Record<string, unknown>): EventSearchState => {
     return {
-      club: (search.club as string) || "technical-events",
-      forum: (search.forum as string) || "ISTE",
-      slug: (search.slug as string) || "iste",
+      club: (search["club"] as string) || "technical-events",
+      forum: (search["forum"] as string) || "ISTE",
+      slug: (search["slug"] as string) || "iste",
     };
   },
   component: DedicatedEventPage,

@@ -20,13 +20,11 @@ import {
   Lightbulb,
   Microscope,
   Shield,
-  Layers,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import {
   forums,
   institutionalEvents,
-  institutionalSubEvents,
   toSlug,
   type ForumClub,
 } from "@/lib/student-forums";
@@ -47,11 +45,11 @@ export function EventsClubsDrawer({
 }: EventsClubsDrawerProps) {
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Accordion state: which main event is currently expanded
-  const [expandedEvent, setExpandedEvent] = useState<string | null>("Student Forums");
+  // Accordion state: None expanded initially so user sees the 10 main names first
+  const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
 
-  // Sub-accordion state inside Student Forums: which forum category is expanded
-  const [expandedForumCat, setExpandedForumCat] = useState<string | null>("Technical Clubs");
+  // Sub-accordion state inside Student Forums: None expanded initially
+  const [expandedForumCat, setExpandedForumCat] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -64,7 +62,7 @@ export function EventsClubsDrawer({
       forums: institutionalEvents,
     };
 
-  // Student Forums categories
+  // Student Forums categories (6 categories)
   const studentForumCategories = [
     {
       id: "Technical Clubs",
@@ -136,18 +134,18 @@ export function EventsClubsDrawer({
     },
   ];
 
-  // Primary list of side bar events
+  // Primary list of side bar events (10 names only at first)
   const mainEvents = [
     { name: "Student Forums", icon: Users, isSpecial: true },
-    { name: "Annual day", icon: PartyPopper },
-    { name: "Women's Leadership Conclave (WLC)", icon: Sparkles },
-    { name: "Graduation Day", icon: GraduationCap },
-    { name: "Student Council", icon: ShieldCheck },
-    { name: "Orientation Day", icon: Compass },
-    { name: "Induction Program", icon: BookOpen },
-    { name: "Ganesh Utsav", icon: Flame },
-    { name: "Investiture Ceremony", icon: Award },
-    { name: "Student Welfare Fund (SWF)", icon: HeartHandshake },
+    { name: "Annual day", icon: PartyPopper, isSpecial: false },
+    { name: "Women's Leadership Conclave (WLC)", icon: Sparkles, isSpecial: false },
+    { name: "Graduation Day", icon: GraduationCap, isSpecial: false },
+    { name: "Student Council", icon: ShieldCheck, isSpecial: false },
+    { name: "Orientation Day", icon: Compass, isSpecial: false },
+    { name: "Induction Program", icon: BookOpen, isSpecial: false },
+    { name: "Ganesh Utsav", icon: Flame, isSpecial: false },
+    { name: "Investiture Ceremony", icon: Award, isSpecial: false },
+    { name: "Student Welfare Fund (SWF)", icon: HeartHandshake, isSpecial: false },
   ];
 
   const handleSelect = (club: ForumClub, forumName: string) => {
@@ -171,11 +169,6 @@ export function EventsClubsDrawer({
         ...institutionalEvents
           .filter((n) => n.toLowerCase().includes(searchTerm.toLowerCase()))
           .map((n) => ({ name: n, club: institutionalClub, group: "Institutional Event" })),
-        ...Object.entries(institutionalSubEvents).flatMap(([parent, subs]) =>
-          subs
-            .filter((sub) => sub.toLowerCase().includes(searchTerm.toLowerCase()))
-            .map((sub) => ({ name: sub, club: institutionalClub, group: parent }))
-        ),
         ...studentForumCategories.flatMap((cat) => {
           const club = forums.find((f) => f.slug === cat.clubSlug) || institutionalClub;
           return cat.forums
@@ -244,7 +237,7 @@ export function EventsClubsDrawer({
           </div>
         </div>
 
-        {/* Compact Sidebar Accordion Menu */}
+        {/* Compact Sidebar Menu */}
         <div className="flex-1 overflow-y-auto divide-y divide-slate-100 text-xs">
           {isSearching ? (
             /* Search Results */
@@ -277,115 +270,116 @@ export function EventsClubsDrawer({
               )}
             </div>
           ) : (
-            /* Main Events List (Accordions matching uploaded image) */
+            /* Main Events List (Displays ONLY the top-level names first) */
             mainEvents.map((item) => {
               const IconComp = item.icon;
-              const isExpanded = expandedEvent === item.name;
 
+              /* 1. Student Forums: Expandable Accordion into the 6 categories */
+              if (item.isSpecial) {
+                const isExpanded = expandedEvent === item.name;
+
+                return (
+                  <div key={item.name} className="bg-white">
+                    <button
+                      type="button"
+                      onClick={() => toggleEvent(item.name)}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 transition-all text-left cursor-pointer ${
+                        isExpanded
+                          ? "bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold shadow-xs"
+                          : "bg-white text-slate-800 hover:bg-slate-50 font-medium"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0 pr-1">
+                        <IconComp
+                          className={`h-4 w-4 flex-shrink-0 ${
+                            isExpanded ? "text-white" : "text-slate-600"
+                          }`}
+                        />
+                        <span className="truncate tracking-tight font-semibold">
+                          {item.name}
+                        </span>
+                      </div>
+
+                      {isExpanded ? (
+                        <ChevronDown className="h-4 w-4 text-white flex-shrink-0" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4 text-slate-400 flex-shrink-0" />
+                      )}
+                    </button>
+
+                    {/* Sub-categories of Student Forums */}
+                    {isExpanded && (
+                      <div className="bg-slate-50/90 border-b border-slate-200/60 divide-y divide-slate-100/80 animate-in slide-in-from-top-1 duration-150">
+                        {studentForumCategories.map((cat) => {
+                          const isCatExpanded = expandedForumCat === cat.title;
+                          const clubEntry =
+                            forums.find((f) => f.slug === cat.clubSlug) || institutionalClub;
+
+                          return (
+                            <div key={cat.id} className="bg-slate-50">
+                              {/* Sub-Category Header (e.g., Technical Clubs, Cultural Events) */}
+                              <button
+                                type="button"
+                                onClick={() => toggleForumCat(cat.title)}
+                                className={`w-full flex items-center justify-between pl-6 pr-3 py-2 text-left transition-colors cursor-pointer ${
+                                  isCatExpanded
+                                    ? "bg-orange-100/70 text-orange-950 font-bold"
+                                    : "hover:bg-slate-100 text-slate-700 font-semibold"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <cat.icon className="h-3.5 w-3.5 text-orange-600 flex-shrink-0" />
+                                  <span className="truncate">{cat.title}</span>
+                                </div>
+                                {isCatExpanded ? (
+                                  <ChevronDown className="h-3.5 w-3.5 text-orange-600 flex-shrink-0" />
+                                ) : (
+                                  <ChevronRight className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                                )}
+                              </button>
+
+                              {/* Available Clubs in this Category (Indented with ➤ arrows) */}
+                              {isCatExpanded && (
+                                <div className="bg-white pl-8 pr-3 py-1 space-y-0.5 border-l-2 border-orange-400 ml-5 my-1">
+                                  {cat.forums.map((forumName) => (
+                                    <button
+                                      key={forumName}
+                                      type="button"
+                                      onClick={() => handleSelect(clubEntry, forumName)}
+                                      className="w-full flex items-center gap-2 py-1.5 text-left text-slate-700 hover:text-orange-600 transition-colors group cursor-pointer"
+                                    >
+                                      <span className="text-[11px] text-orange-500 font-bold flex-shrink-0 group-hover:translate-x-0.5 transition-transform">
+                                        ➤
+                                      </span>
+                                      <span className="truncate font-medium">{forumName}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              /* 2. Institutional Events: Sub-events removed as requested; direct click opens dedicated page */
               return (
                 <div key={item.name} className="bg-white">
-                  {/* Event Header Item */}
                   <button
                     type="button"
-                    onClick={() => toggleEvent(item.name)}
-                    className={`w-full flex items-center justify-between px-3 py-2.5 transition-all text-left cursor-pointer ${
-                      isExpanded
-                        ? "bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold shadow-xs"
-                        : "bg-white text-slate-800 hover:bg-slate-50 font-medium"
-                    }`}
+                    onClick={() => handleSelect(institutionalClub, item.name)}
+                    className="w-full flex items-center justify-between px-3 py-2.5 bg-white text-slate-800 hover:bg-orange-50/70 hover:text-orange-700 font-medium transition-colors text-left cursor-pointer group"
                   >
                     <div className="flex items-center gap-2.5 min-w-0 pr-1">
-                      <IconComp
-                        className={`h-4 w-4 flex-shrink-0 ${
-                          isExpanded ? "text-white" : "text-slate-600"
-                        }`}
-                      />
+                      <IconComp className="h-4 w-4 flex-shrink-0 text-slate-600 group-hover:text-orange-600 transition-colors" />
                       <span className="truncate tracking-tight">{item.name}</span>
                     </div>
 
-                    {isExpanded ? (
-                      <ChevronDown className="h-4 w-4 text-white flex-shrink-0" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4 text-slate-400 flex-shrink-0" />
-                    )}
+                    <ChevronRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-orange-600 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
                   </button>
-
-                  {/* Expanded Sub-events Container (Indented with ➤ arrows matching sketch) */}
-                  {isExpanded && (
-                    <div className="bg-slate-50/90 border-b border-slate-200/60 divide-y divide-slate-100/80 animate-in slide-in-from-top-1 duration-150">
-                      {/* Special Handling for "Student Forums" */}
-                      {item.isSpecial ? (
-                        <div className="divide-y divide-slate-100">
-                          {studentForumCategories.map((cat) => {
-                            const isCatExpanded = expandedForumCat === cat.title;
-                            const clubEntry =
-                              forums.find((f) => f.slug === cat.clubSlug) || institutionalClub;
-
-                            return (
-                              <div key={cat.id} className="bg-slate-50">
-                                {/* Sub-Category Header */}
-                                <button
-                                  type="button"
-                                  onClick={() => toggleForumCat(cat.title)}
-                                  className={`w-full flex items-center justify-between pl-6 pr-3 py-2 text-left transition-colors cursor-pointer ${
-                                    isCatExpanded
-                                      ? "bg-orange-100/70 text-orange-950 font-bold"
-                                      : "hover:bg-slate-100 text-slate-700 font-semibold"
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <cat.icon className="h-3.5 w-3.5 text-orange-600 flex-shrink-0" />
-                                    <span className="truncate">{cat.title}</span>
-                                  </div>
-                                  {isCatExpanded ? (
-                                    <ChevronDown className="h-3.5 w-3.5 text-orange-600 flex-shrink-0" />
-                                  ) : (
-                                    <ChevronRight className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
-                                  )}
-                                </button>
-
-                                {/* Available Clubs in this Category (with ➤ arrows) */}
-                                {isCatExpanded && (
-                                  <div className="bg-white pl-8 pr-3 py-1 space-y-0.5 border-l-2 border-orange-400 ml-4 my-1">
-                                    {cat.forums.map((forumName) => (
-                                      <button
-                                        key={forumName}
-                                        type="button"
-                                        onClick={() => handleSelect(clubEntry, forumName)}
-                                        className="w-full flex items-center gap-2 py-1.5 text-left text-slate-700 hover:text-orange-600 transition-colors group cursor-pointer"
-                                      >
-                                        <span className="text-[11px] text-orange-500 font-bold flex-shrink-0 group-hover:translate-x-0.5 transition-transform">
-                                          ➤
-                                        </span>
-                                        <span className="truncate font-medium">{forumName}</span>
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        /* Sub-events for Institutional Events (Annual day, WLC, etc.) */
-                        <div className="py-1">
-                          {(institutionalSubEvents[item.name] || [item.name]).map((subName) => (
-                            <button
-                              key={subName}
-                              type="button"
-                              onClick={() => handleSelect(institutionalClub, subName)}
-                              className="w-full flex items-center gap-2 pl-7 pr-3 py-1.5 text-left text-slate-700 hover:text-orange-600 hover:bg-orange-50/60 transition-colors group cursor-pointer"
-                            >
-                              <span className="text-[11px] text-orange-500 font-bold flex-shrink-0 group-hover:translate-x-0.5 transition-transform">
-                                ➤
-                              </span>
-                              <span className="truncate font-medium">{subName}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               );
             })
