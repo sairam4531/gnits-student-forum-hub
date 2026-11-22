@@ -1,11 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect, useRef } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useState, useEffect } from "react";
 import { StudentAffairsHeader } from "@/components/StudentAffairsHeader";
 import { LoopVideoShowcase } from "@/components/LoopVideoShowcase";
 import { DeanDetailsCard } from "@/components/DeanDetailsCard";
 import { PhotoGalleryModal } from "@/components/PhotoGalleryModal";
 import { EventsClubsDrawer } from "@/components/EventsClubsDrawer";
-import { ConductedEventsView } from "@/components/ConductedEventsView";
 import {
   getPublicHomepageDataServerFn,
   getAllPublicPhotosServerFn,
@@ -22,6 +21,8 @@ export const Route = createFileRoute("/")({
 });
 
 function StudentAffairsPortalPage() {
+  const navigate = useNavigate();
+
   // Homepage content states
   const [photos, setPhotos] = useState<HomepagePhoto[]>([]);
   const [featuredPhotos, setFeaturedPhotos] = useState<HomepagePhoto[]>([]);
@@ -43,13 +44,6 @@ function StudentAffairsPortalPage() {
   // Modals & Drawers state
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
-
-  // Selected forum for conducted events view
-  const [selectedClub, setSelectedClub] = useState<ForumClub | null>(null);
-  const [selectedForumName, setSelectedForumName] = useState<string | null>(null);
-  const [selectedForumSlug, setSelectedForumSlug] = useState<string | null>(null);
-
-  const conductedEventsSectionRef = useRef<HTMLDivElement>(null);
 
   // Load public data on mount
   useEffect(() => {
@@ -78,13 +72,16 @@ function StudentAffairsPortalPage() {
     loadData();
   }, []);
 
+  // When clicking any event (like ISTE), navigate to dedicated new page - DO NOT display on dashboard
   const handleSelectForum = (club: ForumClub, forumName: string, forumSlug: string) => {
-    setSelectedClub(club);
-    setSelectedForumName(forumName);
-    setSelectedForumSlug(forumSlug);
-    setTimeout(() => {
-      conductedEventsSectionRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, 150);
+    navigate({
+      to: "/events",
+      search: {
+        club: club.slug,
+        forum: forumName,
+        slug: forumSlug,
+      },
+    });
   };
 
   return (
@@ -109,11 +106,11 @@ function StudentAffairsPortalPage() {
           />
         </section>
 
-        {/* B. Lower Section: Display Dean's Profile - FULL LAYOUT, NO BOXES */}
+        {/* B. Lower Section: Display Dean's Profile - FULL LAYOUT */}
         <section
           id="dean-profile-section"
           aria-label="Dean's Directorate Profile"
-          className="w-full bg-slate-50/70 py-12 sm:py-16 md:py-20 border-t border-slate-200/80"
+          className="w-full bg-[#f8faff] py-12 sm:py-16 md:py-20 border-t border-slate-200/80"
         >
           <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
             <DeanDetailsCard
@@ -122,27 +119,6 @@ function StudentAffairsPortalPage() {
             />
           </div>
         </section>
-
-        {/* Conducted Events & Add Event Section when selected from the 3-lines menu */}
-        {selectedClub && selectedForumName && selectedForumSlug && (
-          <div
-            ref={conductedEventsSectionRef}
-            className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-10"
-          >
-            <div className="rounded-3xl bg-white p-6 sm:p-8 border border-slate-200 shadow-xl animate-in fade-in duration-300">
-              <ConductedEventsView
-                club={selectedClub}
-                forumName={selectedForumName}
-                forumSlug={selectedForumSlug}
-                onClose={() => {
-                  setSelectedClub(null);
-                  setSelectedForumName(null);
-                  setSelectedForumSlug(null);
-                }}
-              />
-            </div>
-          </div>
-        )}
       </main>
 
       {/* Slide-out Drawer: Available Events & Clubs (Triggered by Hamburger 3-lines click) */}
