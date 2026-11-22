@@ -207,6 +207,63 @@ export function saveHomepageStore(data: HomepageDataStore): void {
   }
 }
 
+export async function getHomepageStoreAsync(): Promise<HomepageDataStore> {
+  // 1. If running on Cloudflare Workers and KV binding is present, fetch from KV
+  try {
+    const cfKv = (
+      globalThis as unknown as {
+        __cloudflareEnv?: {
+          KV?: {
+            get: (key: string, type: "json") => Promise<Partial<HomepageDataStore> | null>;
+          };
+        };
+      }
+    )?.__cloudflareEnv?.KV;
+
+    if (cfKv && typeof cfKv.get === "function") {
+      const kvData = await cfKv.get("homepage_store", "json");
+      if (kvData && (Array.isArray(kvData.photos) || Array.isArray(kvData.videos) || kvData.dean)) {
+        const store: HomepageDataStore = {
+          photos: Array.isArray(kvData.photos) ? kvData.photos : DEFAULT_HOMEPAGE_DATA.photos,
+          videos: Array.isArray(kvData.videos) ? kvData.videos : DEFAULT_HOMEPAGE_DATA.videos,
+          dean: kvData.dean || DEFAULT_HOMEPAGE_DATA.dean,
+        };
+        globalThis.__gnitsHomepageStore = store;
+        return store;
+      }
+    }
+  } catch (err) {
+    console.warn("Could not read homepage store from Cloudflare KV:", err);
+  }
+
+  // 2. Fall back to synchronous local reader (memory -> /tmp -> local file -> defaults)
+  return getHomepageStore();
+}
+
+export async function saveHomepageStoreAsync(data: HomepageDataStore): Promise<void> {
+  // 1. Keep local memory and disk in sync for fallback
+  saveHomepageStore(data);
+
+  // 2. If running on Cloudflare Workers, persist to KV
+  try {
+    const cfKv = (
+      globalThis as unknown as {
+        __cloudflareEnv?: {
+          KV?: {
+            put: (key: string, value: string) => Promise<void>;
+          };
+        };
+      }
+    )?.__cloudflareEnv?.KV;
+
+    if (cfKv && typeof cfKv.put === "function") {
+      await cfKv.put("homepage_store", JSON.stringify(data));
+    }
+  } catch (err) {
+    console.warn("Could not persist homepage store to Cloudflare KV:", err);
+  }
+}
+
 export function saveUploadedMedia(subfolder: string, fileName: string, base64Data: string): string {
   const sanitizedName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
   const uniqueName = `${Date.now()}_${sanitizedName}`;

@@ -4,7 +4,9 @@ import { z } from "zod";
 import crypto from "node:crypto";
 import {
   getHomepageStore,
+  getHomepageStoreAsync,
   saveHomepageStore,
+  saveHomepageStoreAsync,
   saveUploadedMedia,
   type HomepagePhoto,
   type HomepageVideo,
@@ -42,7 +44,7 @@ function verifyAdminSession(token: string | undefined): boolean {
 // -------------------------------------------------------------
 export const getPublicHomepageDataServerFn = createServerFn({ method: "GET" }).handler(
   async () => {
-    const store = getHomepageStore();
+    const store = await getHomepageStoreAsync();
     const activePhotos = store.photos.filter((p) => p.is_active);
     const featuredPhotos = activePhotos
       .filter((p) => p.is_featured)
@@ -69,7 +71,7 @@ export const getPublicHomepageDataServerFn = createServerFn({ method: "GET" }).h
 
 export const getAllPublicPhotosServerFn = createServerFn({ method: "GET" }).handler(
   async () => {
-    const store = getHomepageStore();
+    const store = await getHomepageStoreAsync();
     return store.photos
       .filter((p) => p.is_active)
       .sort((a, b) => a.display_order - b.display_order);
@@ -85,7 +87,7 @@ export const getAdminHomepageDataServerFn = createServerFn({ method: "GET" }).ha
     if (!verifyAdminSession(sessionToken)) {
       throw new Error("Unauthorized administrator access.");
     }
-    return getHomepageStore();
+    return await getHomepageStoreAsync();
   },
 );
 
@@ -111,7 +113,7 @@ export const savePhotoAdminServerFn = createServerFn({ method: "POST" })
       throw new Error("Unauthorized administrator access.");
     }
 
-    const store = getHomepageStore();
+    const store = await getHomepageStoreAsync();
     let finalImageUrl = data.image_url || "";
 
     if (data.imageBase64 && data.imageFileName) {
@@ -156,7 +158,7 @@ export const savePhotoAdminServerFn = createServerFn({ method: "POST" })
       store.photos.unshift(newPhoto);
     }
 
-    saveHomepageStore(store);
+    await saveHomepageStoreAsync(store);
     return { success: true };
   });
 
@@ -168,9 +170,9 @@ export const deletePhotoAdminServerFn = createServerFn({ method: "POST" })
       throw new Error("Unauthorized administrator access.");
     }
 
-    const store = getHomepageStore();
+    const store = await getHomepageStoreAsync();
     store.photos = store.photos.filter((p) => p.id !== data.id);
-    saveHomepageStore(store);
+    await saveHomepageStoreAsync(store);
     return { success: true };
   });
 
@@ -191,12 +193,12 @@ export const togglePhotoStatusServerFn = createServerFn({ method: "POST" })
       throw new Error("Unauthorized administrator access.");
     }
 
-    const store = getHomepageStore();
+    const store = await getHomepageStoreAsync();
     const photo = store.photos.find((p) => p.id === data.id);
     if (photo) {
       photo[data.field] = data.value;
       photo.updated_at = new Date().toISOString();
-      saveHomepageStore(store);
+      await saveHomepageStoreAsync(store);
     }
     return { success: true };
   });
@@ -225,7 +227,7 @@ export const saveVideoAdminServerFn = createServerFn({ method: "POST" })
       throw new Error("Unauthorized administrator access.");
     }
 
-    const store = getHomepageStore();
+    const store = await getHomepageStoreAsync();
     let finalVideoUrl = data.video_url || "";
     let finalThumbnailUrl = data.thumbnail_url || "";
 
@@ -302,7 +304,7 @@ export const saveVideoAdminServerFn = createServerFn({ method: "POST" })
       store.videos.unshift(newVideo);
     }
 
-    saveHomepageStore(store);
+    await saveHomepageStoreAsync(store);
     return { success: true };
   });
 
@@ -314,9 +316,9 @@ export const deleteVideoAdminServerFn = createServerFn({ method: "POST" })
       throw new Error("Unauthorized administrator access.");
     }
 
-    const store = getHomepageStore();
+    const store = await getHomepageStoreAsync();
     store.videos = store.videos.filter((v) => v.id !== data.id);
-    saveHomepageStore(store);
+    await saveHomepageStoreAsync(store);
     return { success: true };
   });
 
@@ -328,11 +330,11 @@ export const setFeaturedVideoAdminServerFn = createServerFn({ method: "POST" })
       throw new Error("Unauthorized administrator access.");
     }
 
-    const store = getHomepageStore();
+    const store = await getHomepageStoreAsync();
     store.videos.forEach((v) => {
       v.is_featured = v.id === data.id;
     });
-    saveHomepageStore(store);
+    await saveHomepageStoreAsync(store);
     return { success: true };
   });
 
@@ -356,7 +358,7 @@ export const updateDeanDetailsAdminServerFn = createServerFn({ method: "POST" })
       throw new Error("Unauthorized administrator access.");
     }
 
-    const store = getHomepageStore();
+    const store = await getHomepageStoreAsync();
     let finalPhotoUrl = data.profile_photo || store.dean.profile_photo || "";
 
     if (data.photoBase64 && data.photoFileName) {
@@ -381,6 +383,6 @@ export const updateDeanDetailsAdminServerFn = createServerFn({ method: "POST" })
       updated_at: new Date().toISOString(),
     };
 
-    saveHomepageStore(store);
+    await saveHomepageStoreAsync(store);
     return { success: true, dean: store.dean };
   });
