@@ -4,13 +4,27 @@ import {
   Calendar,
   Layers,
   ArrowRight,
+  ArrowLeft,
   ShieldCheck,
-  PlusCircle,
   Search,
-  ExternalLink,
+  Users,
+  ChevronRight,
+  GraduationCap,
+  Sparkles,
+  Compass,
+  BookOpen,
+  Award,
+  HeartHandshake,
+  Flame,
+  PartyPopper,
+  Cpu,
+  Palette,
+  Lightbulb,
+  Microscope,
+  Shield,
 } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import { forums, type ForumClub } from "@/lib/student-forums";
+import { forums, institutionalEvents, toSlug, type ForumClub } from "@/lib/student-forums";
 import type { PublicEventRecord } from "@/lib/events.functions";
 
 interface EventsClubsDrawerProps {
@@ -21,34 +35,145 @@ interface EventsClubsDrawerProps {
   recentEvents: PublicEventRecord[];
 }
 
+type NavigationLevel =
+  | { type: "root" }
+  | { type: "student-forums" }
+  | { type: "category-clubs"; club: ForumClub; title: string };
+
 export function EventsClubsDrawer({
   isOpen,
   onClose,
   onSelectForum,
-  onOpenSubmitModal,
-  recentEvents,
 }: EventsClubsDrawerProps) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<"clubs" | "events">("clubs");
+  const [navLevel, setNavLevel] = useState<NavigationLevel>({ type: "root" });
 
   if (!isOpen) return null;
 
-  const filteredClubs = forums.filter((club) => {
-    const term = searchTerm.toLowerCase();
-    return (
-      club.name.toLowerCase().includes(term) ||
-      club.forums.some((f) => f.toLowerCase().includes(term))
-    );
-  });
+  // Institutional Events Club entry from forums
+  const institutionalClub =
+    forums.find((f) => f.slug === "institutional-events") || {
+      slug: "institutional-events" as const,
+      name: "Institutional Events",
+      number: "00",
+      accent: "blue" as const,
+      forums: institutionalEvents,
+    };
 
-  const filteredEvents = recentEvents.filter((ev) => {
-    const term = searchTerm.toLowerCase();
-    return (
-      ev.event_name.toLowerCase().includes(term) ||
-      ev.forum_slug.toLowerCase().includes(term) ||
-      ev.club_slug.toLowerCase().includes(term)
-    );
-  });
+  // Student Forums categories mapped cleanly
+  const studentForumCategories = [
+    {
+      id: "technical-clubs",
+      title: "Technical Clubs",
+      clubSlug: "technical-events",
+      icon: Cpu,
+      color: "text-blue-600 bg-blue-50 border-blue-200",
+      count: "9 Clubs",
+    },
+    {
+      id: "cultural-events",
+      title: "Cultural Events",
+      clubSlug: "cultural-events",
+      icon: Palette,
+      color: "text-rose-600 bg-rose-50 border-rose-200",
+      count: "8 Clubs",
+    },
+    {
+      id: "outreach-events",
+      title: "Outreach Events",
+      clubSlug: "outreach-events",
+      icon: HeartHandshake,
+      color: "text-amber-600 bg-amber-50 border-amber-200",
+      count: "6 Clubs",
+    },
+    {
+      id: "innovation-incubation",
+      title: "Innovation & Incubation Cell",
+      clubSlug: "innovation-incubation-cell",
+      icon: Lightbulb,
+      color: "text-indigo-600 bg-indigo-50 border-indigo-200",
+      count: "Active Cell",
+    },
+    {
+      id: "research-development",
+      title: "Research & Development Cell",
+      clubSlug: "research-development-cell",
+      icon: Microscope,
+      color: "text-emerald-600 bg-emerald-50 border-emerald-200",
+      count: "Active Cell",
+    },
+    {
+      id: "women-protection-abhaya",
+      title: "Women Protection Cell (Abhaya)",
+      clubSlug: "women-protection-abhaya",
+      icon: Shield,
+      color: "text-purple-600 bg-purple-50 border-purple-200",
+      count: "Active Cell",
+    },
+  ];
+
+  // Specific icons for institutional events in Level 1
+  const getEventIcon = (name: string) => {
+    switch (name) {
+      case "Annual day":
+        return PartyPopper;
+      case "Women's Leadership Conclave (WLC)":
+        return Sparkles;
+      case "Graduation Day":
+        return GraduationCap;
+      case "Student Council":
+        return ShieldCheck;
+      case "Orientation Day":
+        return Compass;
+      case "Induction Program":
+        return BookOpen;
+      case "Ganesh Utsav":
+        return Flame;
+      case "Investiture Ceremony":
+        return Award;
+      case "Student Welfare Fund (SWF)":
+        return HeartHandshake;
+      default:
+        return Calendar;
+    }
+  };
+
+  // Search filter across all clubs and events
+  const isSearching = searchTerm.trim().length > 0;
+  const searchResults = isSearching
+    ? [
+        ...institutionalEvents
+          .filter((name) => name.toLowerCase().includes(searchTerm.toLowerCase()))
+          .map((name) => ({
+            name,
+            club: institutionalClub,
+            category: "Institutional Event",
+          })),
+        ...forums.flatMap((club) =>
+          club.forums
+            .filter((forumName) => forumName.toLowerCase().includes(searchTerm.toLowerCase()))
+            .map((forumName) => ({
+              name: forumName,
+              club,
+              category: club.name,
+            }))
+        ),
+      ]
+    : [];
+
+  const handleSelect = (club: ForumClub, forumName: string) => {
+    const slug = toSlug(forumName);
+    onSelectForum(club, forumName, slug);
+    onClose();
+  };
+
+  const handleBack = () => {
+    if (navLevel.type === "category-clubs") {
+      setNavLevel({ type: "student-forums" });
+    } else if (navLevel.type === "student-forums") {
+      setNavLevel({ type: "root" });
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex">
@@ -59,150 +184,255 @@ export function EventsClubsDrawer({
       />
 
       {/* Drawer Container */}
-      <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col z-10 animate-in slide-in-from-left duration-300">
-        {/* Header */}
-        <div className="p-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-[#1e3a8a] text-white flex items-center justify-center font-black text-xs shadow-xs">
-              GNITS
-            </div>
-            <div>
-              <h3 className="text-base font-black text-slate-900 leading-tight">
-                Available Events & Clubs
+      <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col z-10 animate-in slide-in-from-left duration-300 select-none">
+        {/* Dynamic Header with Back button or Title */}
+        <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+          <div className="flex items-center gap-3 min-w-0">
+            {navLevel.type !== "root" && !isSearching ? (
+              <button
+                type="button"
+                onClick={handleBack}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-200/80 text-slate-800 text-xs font-bold border border-slate-200 transition-colors cursor-pointer shadow-2xs"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span>Back</span>
+              </button>
+            ) : (
+              <div className="h-10 w-10 rounded-xl bg-[#1e3a8a] text-white flex items-center justify-center font-black text-xs shadow-xs flex-shrink-0">
+                GNITS
+              </div>
+            )}
+
+            <div className="min-w-0">
+              <h3 className="text-base font-black text-slate-900 leading-tight truncate">
+                {isSearching
+                  ? "Search Results"
+                  : navLevel.type === "root"
+                    ? "Student Affairs Menu"
+                    : navLevel.type === "student-forums"
+                      ? "Student Forums"
+                      : navLevel.title}
               </h3>
-              <p className="text-[11px] text-slate-500">Student Affairs & Council Forums</p>
+              <p className="text-[11px] text-slate-500 truncate">
+                {isSearching
+                  ? `Found ${searchResults.length} matches`
+                  : navLevel.type === "root"
+                    ? "Student Council & Event Directories"
+                    : navLevel.type === "student-forums"
+                      ? "Select a forum category to view clubs"
+                      : "Available student clubs & forums"}
+              </p>
             </div>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-full hover:bg-slate-200 text-slate-600 transition-colors"
+            className="p-2 rounded-full hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer flex-shrink-0"
+            aria-label="Close menu"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Search Bar */}
-        <div className="p-4 border-b border-slate-100 bg-white">
+        <div className="p-3.5 border-b border-slate-100 bg-white">
           <div className="relative">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <input
               type="text"
-              placeholder="Search clubs, forums, or events..."
+              placeholder="Search any club, forum, or event..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-slate-50 border border-slate-200 text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a8a]/20 focus:border-[#1e3a8a]"
             />
-          </div>
-
-          {/* Tab buttons */}
-          <div className="flex gap-2 mt-3">
-            <button
-              type="button"
-              onClick={() => setActiveTab("clubs")}
-              className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                activeTab === "clubs"
-                  ? "bg-[#1e3a8a] text-white shadow-xs"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              Clubs & Forums ({forums.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("events")}
-              className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                activeTab === "events"
-                  ? "bg-[#1e3a8a] text-white shadow-xs"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              Recent Events ({recentEvents.length})
-            </button>
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm("")}
+                className="absolute right-2.5 top-2.5 text-xs text-slate-400 hover:text-slate-700"
+              >
+                Clear
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Drawer Body */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {activeTab === "clubs" ? (
-            <div className="space-y-3">
-              {filteredClubs.map((club) => (
-                <div
-                  key={club.slug}
-                  className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-2xs hover:border-[#1e3a8a]/40 transition-all"
-                >
-                  <div className="flex items-center justify-between">
+        {/* Drawer Body - Step-by-Step Drill Down */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
+          {/* SEARCH ACTIVE VIEW */}
+          {isSearching ? (
+            <div className="space-y-2">
+              {searchResults.length === 0 ? (
+                <div className="text-center py-12 text-slate-400">
+                  <Calendar className="h-10 w-10 mx-auto mb-2 opacity-40" />
+                  <p className="text-xs font-semibold">No clubs or events match "{searchTerm}"</p>
+                </div>
+              ) : (
+                searchResults.map((item, idx) => (
+                  <button
+                    key={`${item.name}-${idx}`}
+                    type="button"
+                    onClick={() => handleSelect(item.club as ForumClub, item.name)}
+                    className="w-full flex items-center justify-between p-3 rounded-xl border border-slate-200 bg-white hover:bg-blue-50/60 hover:border-blue-300 transition-all text-left group cursor-pointer"
+                  >
                     <div>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                        Club {club.number}
+                      <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider block">
+                        {item.category}
                       </span>
-                      <h4 className="text-sm font-bold text-slate-900">{club.name}</h4>
+                      <span className="text-sm font-bold text-slate-900 group-hover:text-blue-700">
+                        {item.name}
+                      </span>
                     </div>
-                    <span className="text-[11px] font-semibold text-[#1e3a8a] bg-blue-50 px-2 py-0.5 rounded-full">
-                      {club.forums.length} {club.forums.length === 1 ? "Forum" : "Forums"}
+                    <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+                  </button>
+                ))
+              )}
+            </div>
+          ) : navLevel.type === "root" ? (
+            /* ============================================================ */
+            /* LEVEL 1: First display below names only                      */
+            /* ============================================================ */
+            <div className="space-y-2">
+              {/* 1. Student Forums (Triggers Submenu) */}
+              <button
+                type="button"
+                onClick={() => setNavLevel({ type: "student-forums" })}
+                className="w-full flex items-center justify-between p-3.5 rounded-2xl border-2 border-blue-500/30 bg-gradient-to-r from-blue-50/70 via-indigo-50/50 to-white hover:border-blue-600 transition-all text-left shadow-2xs group cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-[#1e40af] text-white flex items-center justify-center shadow-xs flex-shrink-0 group-hover:scale-105 transition-transform">
+                    <Users className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <span className="text-sm sm:text-base font-black text-slate-900 group-hover:text-blue-700 transition-colors">
+                      Student Forums
+                    </span>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      Technical Clubs, Cultural, Outreach &amp; Cells
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-full">
+                    6 Categories
+                  </span>
+                  <ChevronRight className="h-5 w-5 text-blue-600 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </button>
+
+              {/* 2 to 10: Institutional Events List */}
+              {institutionalEvents.map((eventName) => {
+                const IconComponent = getEventIcon(eventName);
+                return (
+                  <button
+                    key={eventName}
+                    type="button"
+                    onClick={() => handleSelect(institutionalClub, eventName)}
+                    className="w-full flex items-center justify-between p-3 rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50 hover:border-slate-300 transition-all text-left group cursor-pointer shadow-2xs"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="h-9 w-9 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
+                        <IconComponent className="h-4 w-4" />
+                      </div>
+                      <span className="text-xs sm:text-sm font-bold text-slate-800 group-hover:text-blue-700 transition-colors truncate">
+                        {eventName}
+                      </span>
+                    </div>
+
+                    <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all flex-shrink-0" />
+                  </button>
+                );
+              })}
+            </div>
+          ) : navLevel.type === "student-forums" ? (
+            /* ============================================================ */
+            /* LEVEL 2: Display Technical Clubs, Cultural, Outreach, Cells  */
+            /* ============================================================ */
+            <div className="space-y-2.5">
+              <div className="px-1 pb-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Select a Forum Category
+                </span>
+              </div>
+
+              {studentForumCategories.map((cat) => {
+                const CatIcon = cat.icon;
+                const clubEntry = forums.find((f) => f.slug === cat.clubSlug);
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => {
+                      if (clubEntry) {
+                        setNavLevel({
+                          type: "category-clubs",
+                          club: clubEntry,
+                          title: cat.title,
+                        });
+                      }
+                    }}
+                    className="w-full flex items-center justify-between p-3.5 rounded-xl border border-slate-200 bg-white hover:bg-blue-50/50 hover:border-blue-300 transition-all text-left group cursor-pointer shadow-2xs"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div
+                        className={`h-9 w-9 rounded-xl flex items-center justify-center flex-shrink-0 border ${cat.color} group-hover:scale-105 transition-transform`}
+                      >
+                        <CatIcon className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-blue-700 transition-colors block truncate">
+                          {cat.title}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-semibold">
+                          {cat.count}
+                        </span>
+                      </div>
+                    </div>
+
+                    <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all flex-shrink-0" />
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            /* ============================================================ */
+            /* LEVEL 3: Display available clubs for selected category        */
+            /* ============================================================ */
+            <div className="space-y-2">
+              <div className="px-1 pb-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Available Clubs &amp; Forums in {navLevel.title}
+                </span>
+              </div>
+
+              {navLevel.club.forums.map((forumName) => (
+                <button
+                  key={forumName}
+                  type="button"
+                  onClick={() => handleSelect(navLevel.club, forumName)}
+                  className="w-full flex items-center justify-between p-3.5 rounded-xl border border-slate-200 bg-white hover:bg-blue-50/70 hover:border-blue-400 transition-all text-left group cursor-pointer shadow-2xs"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="h-2 w-2 rounded-full bg-blue-600 flex-shrink-0 group-hover:scale-125 transition-transform" />
+                    <span className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-blue-700 transition-colors truncate">
+                      {forumName}
                     </span>
                   </div>
 
-                  {/* Forums List */}
-                  <div className="mt-3 flex flex-wrap gap-1.5 pt-2 border-t border-slate-100">
-                    {club.forums.map((forumName) => {
-                      const forumSlug = forumName.toLowerCase().replace(/[^a-z0-9]/g, "-");
-                      return (
-                        <button
-                          key={forumName}
-                          type="button"
-                          onClick={() => {
-                            onSelectForum(club, forumName, forumSlug);
-                            onClose();
-                          }}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-slate-100 hover:bg-[#1e3a8a] hover:text-white text-slate-700 transition-colors cursor-pointer"
-                        >
-                          <span>{forumName}</span>
-                          <ArrowRight className="h-3 w-3" />
-                        </button>
-                      );
-                    })}
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-600">
+                    <span className="hidden sm:inline text-[11px]">View Events</span>
+                    <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-1 transition-transform" />
                   </div>
-                </div>
+                </button>
               ))}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {filteredEvents.length === 0 ? (
-                <div className="text-center py-10 text-slate-400">
-                  <Calendar className="h-10 w-10 mx-auto mb-2 opacity-40" />
-                  <p className="text-xs font-semibold">No conducted events found.</p>
-                </div>
-              ) : (
-                filteredEvents.map((ev) => (
-                  <div
-                    key={ev.id}
-                    className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-2xs"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
-                        {ev.forum_slug.toUpperCase()}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        {ev.event_start}
-                      </span>
-                    </div>
-                    <h4 className="text-xs sm:text-sm font-bold text-slate-900 mt-1.5">
-                      {ev.event_name}
-                    </h4>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Resource: {ev.resource_persons || "College Faculty & Speakers"}
-                    </p>
-                  </div>
-                ))
-              )}
             </div>
           )}
         </div>
 
-        {/* Drawer Footer / Shortcuts */}
-        <div className="p-4 border-t border-slate-200 bg-slate-50 space-y-2">
+        {/* Drawer Footer / Admin Shortcut */}
+        <div className="p-4 border-t border-slate-200 bg-slate-50">
           <Link
             to="/admin"
             onClick={onClose}

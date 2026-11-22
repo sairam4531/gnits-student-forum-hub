@@ -57,6 +57,35 @@ export const forums = [
     accent: "rose",
     forums: ["Women Protection Cell (Abhaya)"],
   },
+  {
+    slug: "institutional-events",
+    name: "Institutional Events",
+    number: "00",
+    accent: "gold",
+    forums: [
+      "Annual day",
+      "Women's Leadership Conclave (WLC)",
+      "Graduation Day",
+      "Student Council",
+      "Orientation Day",
+      "Induction Program",
+      "Ganesh Utsav",
+      "Investiture Ceremony",
+      "Student Welfare Fund (SWF)",
+    ],
+  },
+] as const;
+
+export const institutionalEvents = [
+  "Annual day",
+  "Women's Leadership Conclave (WLC)",
+  "Graduation Day",
+  "Student Council",
+  "Orientation Day",
+  "Induction Program",
+  "Ganesh Utsav",
+  "Investiture Ceremony",
+  "Student Welfare Fund (SWF)",
 ] as const;
 
 export type ForumClub = (typeof forums)[number];
