@@ -258,8 +258,7 @@ export const saveVideoAdminServerFn = createServerFn({ method: "POST" })
     }
 
     if (!finalVideoUrl) {
-      finalVideoUrl =
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
+      finalVideoUrl = "/assets/campus_loop_video.mp4";
     }
 
     const now = new Date().toISOString();

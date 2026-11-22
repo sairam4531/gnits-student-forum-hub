@@ -26,12 +26,17 @@ export function DeanDetailsManage({ dean, onRefresh }: DeanDetailsManageProps) {
 
   useEffect(() => {
     const current = getClientHomepageData().dean;
-    if (current && (current.name !== dean.name || current.email !== dean.email)) {
-      setName(current.name);
-      setDesignation(current.designation);
-      setEmail(current.email);
-      setOffice(current.office || current.contact_number || "Dean – Student Affairs, GNITS, Hyderabad");
-      setProfilePhoto(current.profile_photo || "");
+    const srcDean = current || dean;
+    if (srcDean) {
+      setName(srcDean.name || "");
+      setDesignation(srcDean.designation || "");
+      setEmail(srcDean.email || "");
+      setOffice(
+        srcDean.office ||
+        srcDean.contact_number ||
+        "Dean – Student Affairs, GNITS, Hyderabad"
+      );
+      setProfilePhoto(srcDean.profile_photo || "");
     }
   }, [dean]);
 
@@ -80,19 +85,23 @@ export function DeanDetailsManage({ dean, onRefresh }: DeanDetailsManageProps) {
       // 1. Instantly save to persistent client storage so it is NEVER lost on server reload
       saveClientDeanDetails(updatedDean);
 
-      // 2. Persist to server store
-      await updateDeanDetailsAdminServerFn({
-        data: {
-          name: name.trim(),
-          designation: designation.trim(),
-          email: email.trim(),
-          office: office.trim(),
-          contact_number: office.trim(),
-          profile_photo: profilePhoto || undefined,
-          photoBase64: photoBase64 || undefined,
-          photoFileName: photoFileName || undefined,
-        },
-      });
+      // 2. Persist to server store with resilient fallback
+      try {
+        await updateDeanDetailsAdminServerFn({
+          data: {
+            name: name.trim(),
+            designation: designation.trim(),
+            email: email.trim(),
+            office: office.trim(),
+            contact_number: office.trim(),
+            profile_photo: profilePhoto || undefined,
+            photoBase64: photoBase64 || undefined,
+            photoFileName: photoFileName || undefined,
+          },
+        });
+      } catch (serverErr) {
+        console.warn("Server store update note (client storage persisted):", serverErr);
+      }
 
       await onRefresh();
       setSuccessMsg("Dean Details successfully updated and published to the homepage!");

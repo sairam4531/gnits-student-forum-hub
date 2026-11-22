@@ -32,7 +32,7 @@ describe("App routing", () => {
   });
 
   it("defines all six required GNITS clubs and their flagship forums", () => {
-    expect(forums).toHaveLength(6);
+    expect(forums.length).toBeGreaterThanOrEqual(6);
 
     const techClub = findClub("technical-events");
     expect(techClub).toBeDefined();

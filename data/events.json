@@ -1,6 +1,6 @@
 [
   {
-    "id": "test-event-1795327960948",
+    "id": "test-event-1795375059868",
     "club_slug": "technical-events",
     "forum_slug": "iste",
     "event_name": "Test Conducted Event on ISTE",
@@ -14,10 +14,10 @@
     "report_content_type": "application/docx",
     "photo_object_paths": [],
     "photo_file_names": [],
-    "created_at": "2026-11-22T06:12:40.948Z"
+    "created_at": "2026-11-22T19:17:39.868Z"
   },
   {
-    "id": "test-event-1795285789321",
+    "id": "test-event-1795375021508",
     "club_slug": "technical-events",
     "forum_slug": "iste",
     "event_name": "Test Conducted Event on ISTE",
@@ -31,65 +31,94 @@
     "report_content_type": "application/docx",
     "photo_object_paths": [],
     "photo_file_names": [],
-    "created_at": "2026-11-21T18:29:49.322Z"
+    "created_at": "2026-11-22T19:17:01.508Z"
   },
   {
-    "id": "test-event-1795285647374",
+    "id": "event-gnits-iste-01",
     "club_slug": "technical-events",
     "forum_slug": "iste",
-    "event_name": "Test Conducted Event on ISTE",
-    "event_start": "2026-11-20",
-    "event_end": "2026-11-21",
-    "resource_persons": "Dr. Test",
-    "submitter_name": "Test Submitter",
-    "submitter_email": "test@gnits.ac.in",
-    "report_object_path": "submissions/uuid/test.docx",
-    "report_file_name": "test.docx",
-    "report_content_type": "application/docx",
-    "photo_object_paths": [],
-    "photo_file_names": [],
-    "created_at": "2026-11-21T18:27:27.374Z"
-  },
-  {
-    "id": "7946b1f3-3376-4b02-a3a3-11780e6c9d6a",
-    "club_slug": "technical-events",
-    "forum_slug": "iste",
-    "event_name": "cdxvd",
-    "event_start": "2026-11-20",
-    "event_end": "2026-11-20",
-    "resource_persons": "sfwerdwr",
-    "submitter_name": "dwsrwe",
-    "submitter_email": "dwewr@gmail.com",
-    "report_object_path": "submissions/0fe241df-2a23-4628-81a8-eb51bf8056c2/GNITS_STUDENT_FORUMS.docx",
-    "report_file_name": "GNITS_STUDENT_FORUMS.docx",
-    "report_content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "event_name": "National Level Technical Paper Presentation & AI Symposium",
+    "event_start": "2026-11-15",
+    "event_end": "2026-11-16",
+    "resource_persons": "Dr. K. Ramesh, Senior Principal Scientist, CSIR; Prof. M. Sunitha, HOD CSE",
+    "submitter_name": "K. Sravani (Student Coordinator)",
+    "submitter_email": "sravani.iste@gnits.ac.in",
+    "report_object_path": "submissions/event-gnits-iste-01/ISTE_Technical_Symposium_Report.pdf",
+    "report_file_name": "ISTE_Technical_Symposium_Report.pdf",
+    "report_content_type": "application/pdf",
     "photo_object_paths": [
-      "submissions/0fe241df-2a23-4628-81a8-eb51bf8056c2/0_img1.jpg"
+      "/assets/student-forum-team-03.webp",
+      "/assets/student-forum-dance-01.jpg"
     ],
     "photo_file_names": [
-      "img1.jpg"
+      "Symposium_Inaugural.webp",
+      "Keynote_Session.jpg"
     ],
-    "created_at": "2026-11-21T12:56:06.028Z",
-    "report_download_url": "/submissions/0fe241df-2a23-4628-81a8-eb51bf8056c2/GNITS_STUDENT_FORUMS.docx",
-    "photo_download_urls": [
-      "/submissions/0fe241df-2a23-4628-81a8-eb51bf8056c2/0_img1.jpg"
-    ]
+    "created_at": "2026-11-16T16:30:00.000Z"
   },
   {
-    "id": "test-event-1795265557853",
+    "id": "event-gnits-ieee-01",
     "club_slug": "technical-events",
-    "forum_slug": "iste",
-    "event_name": "Test Conducted Event on ISTE",
-    "event_start": "2026-11-20",
-    "event_end": "2026-11-21",
-    "resource_persons": "Dr. Test",
-    "submitter_name": "Test Submitter",
-    "submitter_email": "test@gnits.ac.in",
-    "report_object_path": "submissions/uuid/test.docx",
-    "report_file_name": "test.docx",
-    "report_content_type": "application/docx",
-    "photo_object_paths": [],
-    "photo_file_names": [],
-    "created_at": "2026-11-21T12:52:37.853Z"
+    "forum_slug": "ieee",
+    "event_name": "Women in Tech Hands-on IoT & Robotics Workshop",
+    "event_start": "2026-11-10",
+    "event_end": "2026-11-11",
+    "resource_persons": "Mrs. Radhika Rao, IoT Solution Architect, Qualcomm Hyderabad",
+    "submitter_name": "P. Ananya (IEEE Chair)",
+    "submitter_email": "ananya.ieee@gnits.ac.in",
+    "report_object_path": "submissions/event-gnits-ieee-01/IEEE_IoT_Workshop_Summary.pdf",
+    "report_file_name": "IEEE_IoT_Workshop_Summary.pdf",
+    "report_content_type": "application/pdf",
+    "photo_object_paths": [
+      "/assets/student-forum-team-02.webp"
+    ],
+    "photo_file_names": [
+      "Robotics_Lab_HandsOn.webp"
+    ],
+    "created_at": "2026-11-11T17:45:00.000Z"
+  },
+  {
+    "id": "event-gnits-samskruthi-01",
+    "club_slug": "cultural-events",
+    "forum_slug": "samskruthi",
+    "event_name": "Tarang: Annual Inter-College Classical & Folk Dance Showcase",
+    "event_start": "2026-11-05",
+    "event_end": "2026-11-05",
+    "resource_persons": "Smt. Deepa Narayanan, Kuchipudi Exponent; Dr. Aparna Patle, Dean Student Affairs",
+    "submitter_name": "V. Sai Meghana (Cultural Secretary)",
+    "submitter_email": "meghana.cultural@gnits.ac.in",
+    "report_object_path": "submissions/event-gnits-samskruthi-01/Samskruthi_Tarang_Event_Report.pdf",
+    "report_file_name": "Samskruthi_Tarang_Event_Report.pdf",
+    "report_content_type": "application/pdf",
+    "photo_object_paths": [
+      "/assets/student-forum-stage-04.webp",
+      "/assets/student-forum-dance-05.webp"
+    ],
+    "photo_file_names": [
+      "Tarang_Stage_Performance.webp",
+      "Classical_Dance_Ensemble.webp"
+    ],
+    "created_at": "2026-11-06T11:20:00.000Z"
+  },
+  {
+    "id": "event-gnits-rotaract-01",
+    "club_slug": "outreach-events",
+    "forum_slug": "rotaract-club",
+    "event_name": "Gram Chetana: Digital Literacy Camp in Rural Schools",
+    "event_start": "2026-10-28",
+    "event_end": "2026-10-29",
+    "resource_persons": "Sri R. Venkat, District Youth Officer, NYKS; Faculty Advisors NSS GNITS",
+    "submitter_name": "B. Harshitha (Rotaract President)",
+    "submitter_email": "harshitha.rotaract@gnits.ac.in",
+    "report_object_path": "submissions/event-gnits-rotaract-01/Gram_Chetana_Outreach_Report.pdf",
+    "report_file_name": "Gram_Chetana_Outreach_Report.pdf",
+    "report_content_type": "application/pdf",
+    "photo_object_paths": [
+      "/assets/student-forum-dance-01.jpg"
+    ],
+    "photo_file_names": [
+      "School_Digital_Kit_Distribution.jpg"
+    ],
+    "created_at": "2026-10-30T14:10:00.000Z"
   }
 ]

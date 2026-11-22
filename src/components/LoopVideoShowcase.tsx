@@ -18,6 +18,13 @@ interface LoopVideoShowcaseProps {
   onScrollToDean?: () => void;
 }
 
+const RELIABLE_VIDEO_SOURCES = [
+  "/assets/campus_loop_video.mp4",
+  "https://vjs.zencdn.net/v/oceans.mp4",
+  "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+  "https://www.w3schools.com/html/mov_bbb.mp4",
+];
+
 export function LoopVideoShowcase({
   video,
   onScrollToDean,
@@ -27,6 +34,7 @@ export function LoopVideoShowcase({
 
   const [currentVideo, setCurrentVideo] = useState<HomepageVideo | null>(video);
   const [localVideoUrl, setLocalVideoUrl] = useState<string | null>(null);
+  const [fallbackIndex, setFallbackIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -64,17 +72,31 @@ export function LoopVideoShowcase({
     if (video) setCurrentVideo(video);
   }, [video]);
 
-  // Priority: 1. Local uploaded video Blob -> 2. Server/Client featured video -> 3. Fallback video
+  // Priority: 1. Local uploaded video Blob -> 2. Server/Client featured video -> 3. Local bundled video asset
   const clientStoreVideo =
     getClientHomepageData().videos.find((v) => v.is_featured && v.is_active) ||
     getClientHomepageData().videos[0];
 
-  const activeVideoUrl =
+  const candidateUrl =
     localVideoUrl ||
-    (currentVideo && currentVideo.video_url !== "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
+    (currentVideo &&
+    currentVideo.video_url &&
+    !currentVideo.video_url.includes("ForBiggerBlazes") &&
+    !currentVideo.video_url.startsWith("blob:")
       ? currentVideo.video_url
-      : clientStoreVideo?.video_url || currentVideo?.video_url) ||
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
+      : clientStoreVideo &&
+        clientStoreVideo.video_url &&
+        !clientStoreVideo.video_url.includes("ForBiggerBlazes") &&
+        !clientStoreVideo.video_url.startsWith("blob:")
+      ? clientStoreVideo.video_url
+      : null);
+
+  const activeVideoUrl = candidateUrl || RELIABLE_VIDEO_SOURCES[fallbackIndex % RELIABLE_VIDEO_SOURCES.length];
+
+  const handleVideoError = () => {
+    console.warn("Video stream note: switching to next reliable backup video source.");
+    setFallbackIndex((prev) => (prev + 1) % RELIABLE_VIDEO_SOURCES.length);
+  };
 
   // Watch for native fullscreen changes
   useEffect(() => {
@@ -164,13 +186,15 @@ export function LoopVideoShowcase({
       ref={containerRef}
       className="relative w-full h-[calc(100vh-4.5rem)] sm:h-[calc(100vh-5rem)] min-h-[520px] max-h-[960px] bg-black overflow-hidden flex items-center justify-center select-none"
     >
-      {/* Endless Auto-Loop Video (No stop, no pause, no duration, sound enabled) */}
+      {/* Endless Auto-Loop Video (No stop, no pause, no duration, sound enabled, guaranteed fallback) */}
       <video
         ref={videoRef}
         src={activeVideoUrl}
+        poster="/assets/student-affairs-reference.jpg"
         autoPlay
         loop
         playsInline
+        onError={handleVideoError}
         onPause={handleEnsurePlaying}
         onEnded={handleEnsurePlaying}
         className="w-full h-full object-cover pointer-events-none"

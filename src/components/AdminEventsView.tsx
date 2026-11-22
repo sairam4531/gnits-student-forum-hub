@@ -138,6 +138,30 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
 
   useEffect(() => {
     fetchAdminEvents();
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+        bc = new BroadcastChannel("gnits_portal_sync_channel");
+        bc.onmessage = () => {
+          fetchAdminEvents();
+        };
+      }
+    } catch {
+      // ignore
+    }
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key?.startsWith("GNITS_")) {
+        fetchAdminEvents();
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      bc?.close();
+      window.removeEventListener("storage", handleStorage);
+    };
   }, [fetchAdminEvents]);
 
   // Load photos for an individual event from download URLs or IndexedDB

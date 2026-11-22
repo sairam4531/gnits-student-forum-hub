@@ -34,8 +34,8 @@ export interface DeanDetails {
   designation: string;
   profile_photo: string;
   email: string;
-  contact_number?: string;
-  office?: string;
+  contact_number?: string | undefined;
+  office?: string | undefined;
   updated_at: string;
 }
 
@@ -116,7 +116,7 @@ const DEFAULT_HOMEPAGE_DATA: HomepageDataStore = {
       title: "GNITS Campus Tour & Student Affairs Highlights",
       description:
         "G. Narayanamma Institute of Technology & Science - Empowering women engineers through technical excellence, leadership, and vibrant student forum activities.",
-      video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+      video_url: "/assets/campus_loop_video.mp4",
       thumbnail_url: "/assets/student-affairs-reference.jpg",
       is_active: true,
       is_featured: true,
@@ -131,7 +131,8 @@ const DEFAULT_HOMEPAGE_DATA: HomepageDataStore = {
     designation: "Dean, Student Affairs & Professor",
     profile_photo: "",
     email: "aparna.patle@gnits.ac.in",
-    contact_number: "",
+    contact_number: "Dean – Student Affairs, GNITS, Hyderabad",
+    office: "Dean – Student Affairs, GNITS, Hyderabad",
     updated_at: "2026-11-22T19:42:00.000Z",
   },
 };

@@ -18,7 +18,7 @@ export function CollegeVideoCard({ video }: CollegeVideoCardProps) {
 
   const videoUrl =
     video?.video_url ||
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
+    "/assets/campus_loop_video.mp4";
   const thumbnailUrl = video?.thumbnail_url || "/assets/student-affairs-reference.jpg";
 
   const togglePlay = () => {

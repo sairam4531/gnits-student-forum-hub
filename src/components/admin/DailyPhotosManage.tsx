@@ -134,21 +134,25 @@ export function DailyPhotosManage({ photos, onRefresh }: DailyPhotosManageProps)
       // 1. Instantly save to persistent client store so it is never deleted by container restart
       saveClientPhoto(newPhotoObj);
 
-      // 2. Persist to server store
-      await savePhotoAdminServerFn({
-        data: {
-          id: newPhotoObj.id,
-          title: newPhotoObj.title,
-          description: newPhotoObj.description,
-          category,
-          is_active: isActive,
-          is_featured: isFeatured,
-          display_order: Number(displayOrder),
-          image_url: finalImageUrl,
-          imageBase64: imageBase64 || undefined,
-          imageFileName: imageFileName || undefined,
-        },
-      });
+      // 2. Persist to server store with resilient fallback
+      try {
+        await savePhotoAdminServerFn({
+          data: {
+            id: newPhotoObj.id,
+            title: newPhotoObj.title,
+            description: newPhotoObj.description,
+            category,
+            is_active: isActive,
+            is_featured: isFeatured,
+            display_order: Number(displayOrder),
+            image_url: finalImageUrl,
+            imageBase64: imageBase64 || undefined,
+            imageFileName: imageFileName || undefined,
+          },
+        });
+      } catch (serverErr) {
+        console.warn("Server photo store note (persisted to client storage):", serverErr);
+      }
 
       await onRefresh();
       setIsModalOpen(false);

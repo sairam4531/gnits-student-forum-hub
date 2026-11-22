@@ -123,6 +123,30 @@ export function ConductedEventsView({
 
   useEffect(() => {
     fetchEvents();
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+        bc = new BroadcastChannel("gnits_portal_sync_channel");
+        bc.onmessage = () => {
+          fetchEvents();
+        };
+      }
+    } catch {
+      // ignore
+    }
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key?.startsWith("GNITS_")) {
+        fetchEvents();
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      bc?.close();
+      window.removeEventListener("storage", handleStorage);
+    };
   }, [fetchEvents]);
 
   // Handle Photo selection

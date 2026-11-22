@@ -132,31 +132,39 @@ export function CollegeVideosManage({ videos, onRefresh }: CollegeVideosManagePr
           });
           const base64 = await base64Promise;
 
-          await saveVideoAdminServerFn({
-            data: {
-              id: newVideoObj.id,
-              title: newVideoObj.title,
-              video_url: finalUrl || videoFile.name,
-              videoBase64: base64,
-              videoFileName: videoFile.name,
-              is_active: true,
-              is_featured: true,
-              display_order: 1,
-            },
-          });
+          try {
+            await saveVideoAdminServerFn({
+              data: {
+                id: newVideoObj.id,
+                title: newVideoObj.title,
+                video_url: finalUrl || videoFile.name,
+                videoBase64: base64,
+                videoFileName: videoFile.name,
+                is_active: true,
+                is_featured: true,
+                display_order: 1,
+              },
+            });
+          } catch (serverErr) {
+            console.warn("Server video store note (persisted to IndexedDB):", serverErr);
+          }
         } else {
           // File is large (> 3.5MB). To prevent Vercel 413 Payload Too Large error,
           // save the reference without the massive payload. The video is safely stored in IndexedDB.
-          await saveVideoAdminServerFn({
-            data: {
-              id: newVideoObj.id,
-              title: newVideoObj.title,
-              video_url: finalUrl || videoFile.name,
-              is_active: true,
-              is_featured: true,
-              display_order: 1,
-            },
-          });
+          try {
+            await saveVideoAdminServerFn({
+              data: {
+                id: newVideoObj.id,
+                title: newVideoObj.title,
+                video_url: finalUrl || videoFile.name,
+                is_active: true,
+                is_featured: true,
+                display_order: 1,
+              },
+            });
+          } catch (serverErr) {
+            console.warn("Server video store note (persisted to IndexedDB):", serverErr);
+          }
         }
       } else {
         // Direct URL was provided
@@ -175,16 +183,20 @@ export function CollegeVideosManage({ videos, onRefresh }: CollegeVideosManagePr
 
         saveClientVideo(newVideoObj);
 
-        await saveVideoAdminServerFn({
-          data: {
-            id: newVideoObj.id,
-            title: newVideoObj.title,
-            video_url: finalUrl,
-            is_active: true,
-            is_featured: true,
-            display_order: 1,
-          },
-        });
+        try {
+          await saveVideoAdminServerFn({
+            data: {
+              id: newVideoObj.id,
+              title: newVideoObj.title,
+              video_url: finalUrl,
+              is_active: true,
+              is_featured: true,
+              display_order: 1,
+            },
+          });
+        } catch (serverErr) {
+          console.warn("Server video store note (persisted to client storage):", serverErr);
+        }
       }
 
       await onRefresh();

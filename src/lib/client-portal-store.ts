@@ -81,7 +81,7 @@ const DEFAULT_CLIENT_DATA: ClientHomepageData = {
       id: "video-1",
       title: "GNITS Campus Tour & Student Affairs Highlights",
       description: "Empowering women engineers through technical excellence, leadership, and vibrant student forum activities.",
-      video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+      video_url: "/assets/campus_loop_video.mp4",
       thumbnail_url: "/assets/student-affairs-reference.jpg",
       is_active: true,
       is_featured: true,
@@ -147,6 +147,45 @@ function saveDeletedTracker(tracker: DeletedTracker): void {
 // -------------------------------------------------------------
 // CLIENT HOMEPAGE STORE
 // -------------------------------------------------------------
+export function sanitizeVideoRecord(v: HomepageVideo): HomepageVideo {
+  const isInvalidUrl =
+    !v.video_url ||
+    v.video_url.includes("ForBiggerBlazes") ||
+    v.video_url.startsWith("blob:");
+
+  return {
+    ...v,
+    video_url: isInvalidUrl ? "/assets/campus_loop_video.mp4" : v.video_url,
+    thumbnail_url: v.thumbnail_url || "/assets/student-affairs-reference.jpg",
+  };
+}
+
+export function sanitizeDeanRecord(d?: DeanDetails | null): DeanDetails {
+  const contact = (
+    d?.contact_number?.trim() ||
+    d?.office?.trim() ||
+    DEFAULT_CLIENT_DATA.dean.contact_number ||
+    "Dean – Student Affairs, GNITS, Hyderabad"
+  );
+  const office = (
+    d?.office?.trim() ||
+    d?.contact_number?.trim() ||
+    DEFAULT_CLIENT_DATA.dean.office ||
+    "Dean – Student Affairs, GNITS, Hyderabad"
+  );
+
+  return {
+    id: d?.id || "dean-1",
+    name: d?.name || DEFAULT_CLIENT_DATA.dean.name,
+    designation: d?.designation || DEFAULT_CLIENT_DATA.dean.designation,
+    profile_photo: d?.profile_photo || "",
+    email: d?.email || DEFAULT_CLIENT_DATA.dean.email,
+    contact_number: contact,
+    office: office,
+    updated_at: d?.updated_at || new Date().toISOString(),
+  };
+}
+
 export function getClientHomepageData(): ClientHomepageData {
   if (!isClient()) return DEFAULT_CLIENT_DATA;
   try {
@@ -159,14 +198,20 @@ export function getClientHomepageData(): ClientHomepageData {
       ? parsed.photos.filter((p) => !tracker.photoIds.includes(p.id))
       : DEFAULT_CLIENT_DATA.photos;
 
-    const videos = Array.isArray(parsed.videos)
+    const rawVideos = Array.isArray(parsed.videos)
       ? parsed.videos.filter((v) => !tracker.videoIds.includes(v.id))
       : DEFAULT_CLIENT_DATA.videos;
+
+    const videos = rawVideos.length > 0
+      ? rawVideos.map(sanitizeVideoRecord)
+      : DEFAULT_CLIENT_DATA.videos.map(sanitizeVideoRecord);
+
+    const dean = sanitizeDeanRecord(parsed.dean);
 
     return {
       photos,
       videos,
-      dean: parsed.dean || DEFAULT_CLIENT_DATA.dean,
+      dean,
       isUserModified: parsed.isUserModified ?? false,
       lastUpdated: parsed.lastUpdated ?? Date.now(),
     };
@@ -415,10 +460,26 @@ export function mergeServerWithClient(serverData: HomepageDataStore): ClientHome
   const clientData = getClientHomepageData();
   const tracker = getDeletedTracker();
 
-  // 1. Dean Details: If client modified Dean, preserve client Dean!
-  let finalDean = serverData.dean || clientData.dean;
-  if (clientData.isUserModified && clientData.dean) {
-    finalDean = clientData.dean;
+  // 1. Dean Details: If client modified Dean, preserve client Dean. Never allow empty strings to wipe valid fields.
+  let finalDean = sanitizeDeanRecord(clientData.dean);
+  if (!clientData.isUserModified && serverData.dean) {
+    const sDean = serverData.dean;
+    finalDean = sanitizeDeanRecord({
+      id: sDean.id || finalDean.id,
+      name: sDean.name?.trim() || finalDean.name,
+      designation: sDean.designation?.trim() || finalDean.designation,
+      profile_photo: sDean.profile_photo || finalDean.profile_photo,
+      email: sDean.email?.trim() || finalDean.email,
+      contact_number:
+        sDean.contact_number?.trim() ||
+        sDean.office?.trim() ||
+        finalDean.contact_number,
+      office:
+        sDean.office?.trim() ||
+        sDean.contact_number?.trim() ||
+        finalDean.office,
+      updated_at: sDean.updated_at || finalDean.updated_at,
+    });
   }
 
   // 2. Videos: Merge without resurrecting deleted items, preserving user-uploaded videos
@@ -427,18 +488,21 @@ export function mergeServerWithClient(serverData: HomepageDataStore): ClientHome
   // Add server videos that were not deleted
   (serverData.videos || []).forEach((sv) => {
     if (!tracker.videoIds.includes(sv.id)) {
-      mergedVideosMap.set(sv.id, sv);
+      mergedVideosMap.set(sv.id, sanitizeVideoRecord(sv));
     }
   });
 
   // Client videos take precedence or append
   (clientData.videos || []).forEach((cv) => {
     if (!tracker.videoIds.includes(cv.id)) {
-      mergedVideosMap.set(cv.id, cv);
+      mergedVideosMap.set(cv.id, sanitizeVideoRecord(cv));
     }
   });
 
-  const finalVideos = Array.from(mergedVideosMap.values());
+  let finalVideos = Array.from(mergedVideosMap.values()).map(sanitizeVideoRecord);
+  if (finalVideos.length === 0) {
+    finalVideos = DEFAULT_CLIENT_DATA.videos.map(sanitizeVideoRecord);
+  }
 
   // 3. Photos: Merge without resurrecting deleted items
   const mergedPhotosMap = new Map<string, HomepagePhoto>();
@@ -455,7 +519,10 @@ export function mergeServerWithClient(serverData: HomepageDataStore): ClientHome
     }
   });
 
-  const finalPhotos = Array.from(mergedPhotosMap.values());
+  let finalPhotos = Array.from(mergedPhotosMap.values());
+  if (finalPhotos.length === 0) {
+    finalPhotos = DEFAULT_CLIENT_DATA.photos;
+  }
 
   const result: ClientHomepageData = {
     dean: finalDean,
