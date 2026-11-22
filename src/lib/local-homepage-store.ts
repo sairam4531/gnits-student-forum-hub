@@ -207,26 +207,41 @@ export function saveHomepageStore(data: HomepageDataStore): void {
   }
 }
 
+export function getCloudflareKVNamespace(): {
+  get: <T = unknown>(key: string, type: "json" | "text") => Promise<T | null>;
+  put: (key: string, value: string) => Promise<void>;
+} | null {
+  const g = globalThis as unknown as {
+    __env__?: { KV?: any };
+    __cloudflareEnv?: { KV?: any };
+    env?: { KV?: any };
+    KV?: any;
+  };
+  const kv =
+    g.__env__?.KV ||
+    g.__cloudflareEnv?.KV ||
+    g.env?.KV ||
+    g.KV ||
+    (typeof process !== "undefined" && (process.env as any)?.KV) ||
+    null;
+
+  if (kv && typeof kv.get === "function" && typeof kv.put === "function") {
+    return kv;
+  }
+  return null;
+}
+
 export async function getHomepageStoreAsync(): Promise<HomepageDataStore> {
   // 1. If running on Cloudflare Workers and KV binding is present, fetch from KV
   try {
-    const cfKv = (
-      globalThis as unknown as {
-        __cloudflareEnv?: {
-          KV?: {
-            get: (key: string, type: "json") => Promise<Partial<HomepageDataStore> | null>;
-          };
-        };
-      }
-    )?.__cloudflareEnv?.KV;
-
+    const cfKv = getCloudflareKVNamespace();
     if (cfKv && typeof cfKv.get === "function") {
-      const kvData = await cfKv.get("homepage_store", "json");
+      const kvData = await cfKv.get<Partial<HomepageDataStore>>("homepage_store", "json");
       if (kvData && (Array.isArray(kvData.photos) || Array.isArray(kvData.videos) || kvData.dean)) {
         const store: HomepageDataStore = {
           photos: Array.isArray(kvData.photos) ? kvData.photos : DEFAULT_HOMEPAGE_DATA.photos,
           videos: Array.isArray(kvData.videos) ? kvData.videos : DEFAULT_HOMEPAGE_DATA.videos,
-          dean: kvData.dean || DEFAULT_HOMEPAGE_DATA.dean,
+          dean: kvData.dean ? { ...DEFAULT_HOMEPAGE_DATA.dean, ...kvData.dean } : DEFAULT_HOMEPAGE_DATA.dean,
         };
         globalThis.__gnitsHomepageStore = store;
         return store;
@@ -246,16 +261,7 @@ export async function saveHomepageStoreAsync(data: HomepageDataStore): Promise<v
 
   // 2. If running on Cloudflare Workers, persist to KV
   try {
-    const cfKv = (
-      globalThis as unknown as {
-        __cloudflareEnv?: {
-          KV?: {
-            put: (key: string, value: string) => Promise<void>;
-          };
-        };
-      }
-    )?.__cloudflareEnv?.KV;
-
+    const cfKv = getCloudflareKVNamespace();
     if (cfKv && typeof cfKv.put === "function") {
       await cfKv.put("homepage_store", JSON.stringify(data));
     }
@@ -265,10 +271,17 @@ export async function saveHomepageStoreAsync(data: HomepageDataStore): Promise<v
 }
 
 export function saveUploadedMedia(subfolder: string, fileName: string, base64Data: string): string {
+  // On Cloudflare Workers or serverless edge, runtime static files cannot be served via /uploads/.
+  // Returning the self-contained data URL ensures the media renders immediately in all browsers
+  // and persists seamlessly in KV.
+  if (getCloudflareKVNamespace() || typeof process === "undefined" || !process.cwd) {
+    return base64Data;
+  }
+
   const sanitizedName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
   const uniqueName = `${Date.now()}_${sanitizedName}`;
 
-  // 1. Attempt writing to public/uploads
+  // Attempt writing to public/uploads in local dev/Node environments
   try {
     const uploadDir = path.resolve(process.cwd(), "public", "uploads", subfolder);
     if (!fs.existsSync(uploadDir)) {
@@ -279,7 +292,7 @@ export function saveUploadedMedia(subfolder: string, fileName: string, base64Dat
     fs.writeFileSync(filePath, Buffer.from(base64Content, "base64"));
     return `/uploads/${subfolder}/${uniqueName}`;
   } catch {
-    // If filesystem is read-only (e.g. Vercel), return data URL directly so image is never lost
+    // If filesystem is read-only (e.g. Cloudflare / Vercel), return data URL directly
     return base64Data;
   }
 }

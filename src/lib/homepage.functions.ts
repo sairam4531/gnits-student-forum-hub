@@ -359,10 +359,12 @@ export const updateDeanDetailsAdminServerFn = createServerFn({ method: "POST" })
     }
 
     const store = await getHomepageStoreAsync();
-    let finalPhotoUrl = data.profile_photo || store.dean.profile_photo || "";
+    let finalPhotoUrl = (data.profile_photo || "").trim();
 
-    if (data.photoBase64 && data.photoFileName) {
-      finalPhotoUrl = saveUploadedMedia("dean", data.photoFileName, data.photoBase64);
+    if (data.photoBase64) {
+      finalPhotoUrl = saveUploadedMedia("dean", data.photoFileName || "dean_photo.jpg", data.photoBase64);
+    } else if (!finalPhotoUrl && store.dean.profile_photo) {
+      finalPhotoUrl = store.dean.profile_photo;
     }
 
     const officeValue =

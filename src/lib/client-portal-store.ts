@@ -460,27 +460,35 @@ export function mergeServerWithClient(serverData: HomepageDataStore): ClientHome
   const clientData = getClientHomepageData();
   const tracker = getDeletedTracker();
 
-  // 1. Dean Details: If client modified Dean, preserve client Dean. Never allow empty strings to wipe valid fields.
-  let finalDean = sanitizeDeanRecord(clientData.dean);
-  if (!clientData.isUserModified && serverData.dean) {
-    const sDean = serverData.dean;
-    finalDean = sanitizeDeanRecord({
-      id: sDean.id || finalDean.id,
-      name: sDean.name?.trim() || finalDean.name,
-      designation: sDean.designation?.trim() || finalDean.designation,
-      profile_photo: sDean.profile_photo || finalDean.profile_photo,
-      email: sDean.email?.trim() || finalDean.email,
-      contact_number:
-        sDean.contact_number?.trim() ||
-        sDean.office?.trim() ||
-        finalDean.contact_number,
-      office:
-        sDean.office?.trim() ||
-        sDean.contact_number?.trim() ||
-        finalDean.office,
-      updated_at: sDean.updated_at || finalDean.updated_at,
-    });
-  }
+  // 1. Dean Details: Server-provided Dean from KV is authoritative for the public homepage.
+  // Never allow empty strings from stale browser cache to wipe valid server fields.
+  const sDean = serverData.dean;
+  const cDean = clientData.dean;
+  const resolvedPhoto =
+    sDean?.profile_photo?.trim() ||
+    cDean?.profile_photo?.trim() ||
+    "";
+
+  let finalDean = sanitizeDeanRecord({
+    id: sDean?.id || cDean?.id || "dean-1",
+    name: sDean?.name?.trim() || cDean?.name?.trim() || DEFAULT_CLIENT_DATA.dean.name,
+    designation: sDean?.designation?.trim() || cDean?.designation?.trim() || DEFAULT_CLIENT_DATA.dean.designation,
+    profile_photo: resolvedPhoto,
+    email: sDean?.email?.trim() || cDean?.email?.trim() || DEFAULT_CLIENT_DATA.dean.email,
+    contact_number:
+      sDean?.contact_number?.trim() ||
+      sDean?.office?.trim() ||
+      cDean?.contact_number?.trim() ||
+      cDean?.office?.trim() ||
+      DEFAULT_CLIENT_DATA.dean.contact_number,
+    office:
+      sDean?.office?.trim() ||
+      sDean?.contact_number?.trim() ||
+      cDean?.office?.trim() ||
+      cDean?.contact_number?.trim() ||
+      DEFAULT_CLIENT_DATA.dean.office,
+    updated_at: sDean?.updated_at || cDean?.updated_at || new Date().toISOString(),
+  });
 
   // 2. Videos: Server videos are authoritative when available from server/KV across all browsers
   const mergedVideosMap = new Map<string, HomepageVideo>();

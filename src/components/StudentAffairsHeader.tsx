@@ -54,8 +54,14 @@ export function StudentAffairsHeader({
     };
   }, [title]);
 
-  // Frame-by-frame animation: One title scrolls from right to left.
-  // When "Welcome" touches the left logo (x <= 0), the next title starts from the right side.
+  // Reset messages when title changes
+  useEffect(() => {
+    setMessages([]);
+    idCounterRef.current = 0;
+  }, [title]);
+
+  // Frame-by-frame marquee animation: smooth right-to-left scrolling with guaranteed spacing
+  // Prevents text overlapping or premature clipping on any screen width (desktop, tablet, mobile).
   useEffect(() => {
     let animationFrameId: number;
     let lastTime = performance.now();
@@ -67,14 +73,14 @@ export function StudentAffairsHeader({
       // Prevent sudden jumps if browser tab is backgrounded
       if (dt > 0.1) dt = 0.1;
 
-      const speed = 85; // pixels per second - readable, elegant pace
+      const speed = 80; // pixels per second - comfortable, readable pace
       const cWidth = containerWidthRef.current;
       const tWidth = textWidthRef.current;
 
       if (cWidth > 0 && tWidth > 0) {
-        setMessages((prev) => {
-          let needsSpawn = false;
+        const minGap = Math.max(96, Math.round(cWidth * 0.15));
 
+        setMessages((prev) => {
           // If no messages exist yet, spawn the initial one from the right edge
           if (prev.length === 0) {
             idCounterRef.current += 1;
@@ -87,37 +93,27 @@ export function StudentAffairsHeader({
             ];
           }
 
-          const updated = prev.map((msg) => {
-            const nextX = msg.x - speed * dt;
-            let triggered = msg.triggered;
+          // Advance all active messages to the left
+          const updated = prev.map((msg) => ({
+            ...msg,
+            x: msg.x - speed * dt,
+          }));
 
-            // When the front word "Welcome" reaches / touches the left logo (x <= 0)
-            if (!triggered && nextX <= 0) {
-              triggered = true;
-              needsSpawn = true;
-            }
+          // Check if rightmost message has advanced enough to spawn the next title
+          const lastMsg = updated[updated.length - 1];
+          const canSpawn = lastMsg && lastMsg.x + tWidth + minGap <= cWidth;
 
-            return {
-              ...msg,
-              x: nextX,
-              triggered,
-            };
-          });
-
-          // Filter out items that have completely slid past the left logo
-          const remaining = updated.filter((msg) => msg.x > -tWidth - 10);
-
-          // When front touched the logo, spawn the next scroll from the right boundary
-          if (needsSpawn) {
+          if (canSpawn) {
             idCounterRef.current += 1;
-            remaining.push({
+            updated.push({
               id: idCounterRef.current,
               x: cWidth,
               triggered: false,
             });
           }
 
-          return remaining;
+          // Filter out items that have completely slid past the left logo
+          return updated.filter((msg) => msg.x + tWidth > -30);
         });
       }
 
@@ -132,13 +128,13 @@ export function StudentAffairsHeader({
     <header className="sticky top-0 z-40 w-full bg-[#2563eb] text-white border-b-2 border-blue-700/80 shadow-md select-none">
       <div className="w-full px-2 sm:px-4 lg:px-6 h-18 sm:h-20 flex items-center justify-between gap-2 sm:gap-4">
         {/* Left Boundary: Hamburger Menu (Three Lines) + GNITS College Logo */}
-        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 z-20 bg-[#2563eb] pr-2">
+        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 z-20 bg-[#2563eb] pr-1 sm:pr-2">
           {/* Hamburger button (three horizontal lines) */}
           <button
             type="button"
             onClick={onOpenDrawer}
             aria-label="Open Available Events & Clubs Menu"
-            className="p-1.5 sm:p-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-900 transition-colors focus:outline-none focus:ring-2 focus:ring-white/40 cursor-pointer"
+            className="p-1.5 sm:p-2 rounded-xl bg-white/10 hover:bg-white/20 active:bg-white/30 text-slate-900 transition-colors focus:outline-none focus:ring-2 focus:ring-white/40 cursor-pointer flex-shrink-0"
             title="Available Events & Clubs"
           >
             <div className="flex flex-col gap-1.5 justify-center items-center w-7 sm:w-8 py-1">
@@ -154,10 +150,16 @@ export function StudentAffairsHeader({
           </div>
         </div>
 
-        {/* Center: Heading Scrolling one after one from Right to Left till Logo */}
+        {/* Center: Heading Scrolling smoothly from Right to Left between Logos */}
         <div
           ref={containerRef}
           className="flex-1 min-w-0 overflow-hidden relative h-full flex items-center"
+          style={{
+            maskImage:
+              "linear-gradient(to right, transparent 0%, black 16px, black calc(100% - 16px), transparent 100%)",
+            WebkitMaskImage:
+              "linear-gradient(to right, transparent 0%, black 16px, black calc(100% - 16px), transparent 100%)",
+          }}
         >
           {/* Invisible text element used for exact responsive measurement */}
           <span
@@ -168,14 +170,15 @@ export function StudentAffairsHeader({
             {title}
           </span>
 
-          {/* Scrolling Messages - Single title scrolling across one after one */}
+          {/* Scrolling Messages - Single title scrolling across with comfortable spacing */}
           {messages.map((item) => (
             <div
               key={item.id}
               style={{
-                transform: `translate3d(${item.x}px, 0, 0)`,
+                transform: `translate3d(${item.x}px, -50%, 0)`,
+                top: "50%",
               }}
-              className="absolute whitespace-nowrap text-base sm:text-xl md:text-2xl font-black text-black tracking-wide drop-shadow-xs will-change-transform pointer-events-none"
+              className="absolute whitespace-nowrap text-base sm:text-xl md:text-2xl font-black text-black tracking-wide drop-shadow-xs will-change-transform pointer-events-none select-none"
             >
               {title}
             </div>
@@ -183,7 +186,7 @@ export function StudentAffairsHeader({
         </div>
 
         {/* Right Boundary: 28 Years of Excellence Logo */}
-        <div className="flex-shrink-0 z-20 bg-[#2563eb] pl-2 flex items-center justify-center">
+        <div className="flex-shrink-0 z-20 bg-[#2563eb] pl-1 sm:pl-2 flex items-center justify-center">
           <div className="h-13 w-13 sm:h-16 sm:w-16 flex items-center justify-center flex-shrink-0">
             <AnniversaryLogo className="h-full w-full" />
           </div>
