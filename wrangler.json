@@ -3,7 +3,7 @@
   "name": "gnits-student-affairs",
   "account_id": "f268748965c0561933f524c9983a8f01",
   "main": ".output/server/index.mjs",
-  "compatibility_date": "2026-11-23",
+  "compatibility_date": "2026-11-22",
   "compatibility_flags": [
     "nodejs_compat"
   ],
