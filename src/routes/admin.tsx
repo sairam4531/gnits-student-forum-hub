@@ -17,8 +17,6 @@ import {
   LayoutDashboard,
   Calendar,
 } from "lucide-react";
-import { ForumCarousel } from "@/components/ForumCarousel";
-import { ClubNavigation } from "@/components/ClubNavigation";
 import { AdminEventsView } from "@/components/AdminEventsView";
 import { AdminProfileModal } from "@/components/AdminProfileModal";
 import { DailyPhotosManage } from "@/components/admin/DailyPhotosManage";
@@ -26,6 +24,8 @@ import { CollegeVideosManage } from "@/components/admin/CollegeVideosManage";
 import { DeanDetailsManage } from "@/components/admin/DeanDetailsManage";
 import { StudentAffairsHeader } from "@/components/StudentAffairsHeader";
 import { EventsClubsDrawer } from "@/components/EventsClubsDrawer";
+import { LoopVideoShowcase } from "@/components/LoopVideoShowcase";
+import { DeanDetailsCard } from "@/components/DeanDetailsCard";
 import {
   adminLoginServerFn,
   getAdminSessionServerFn,
@@ -360,6 +360,17 @@ function AdminPage() {
   }
 
   // Authenticated Admin Dashboard
+  const currentClientData = getClientHomepageData();
+  const currentDean = homepageData?.dean || currentClientData.dean;
+  const allVideosList =
+    homepageData?.videos?.length
+      ? homepageData.videos
+      : currentClientData.videos;
+  const activeFeaturedVideo =
+    allVideosList.find((v) => v.is_featured && v.is_active) ||
+    allVideosList[0] ||
+    null;
+
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground antialiased selection:bg-primary/20">
       {/* Top Header matching Student Portal with College Logo, Marquee, 28 Years Logo & 3-lines menu */}
@@ -435,7 +446,12 @@ function AdminPage() {
           <div className="flex items-center gap-2 overflow-x-auto py-2.5">
             <button
               type="button"
-              onClick={() => setActiveTab("events")}
+              onClick={() => {
+                setSelectedClub(null);
+                setSelectedForumName(null);
+                setSelectedForumSlug(null);
+                setActiveTab("events");
+              }}
               className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
                 activeTab === "events"
                   ? "bg-primary text-primary-foreground shadow-sm"
@@ -443,20 +459,7 @@ function AdminPage() {
               }`}
             >
               <LayoutDashboard className="h-4 w-4" />
-              <span>Submitted Events & Forums</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab("photos")}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
-                activeTab === "photos"
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
-            >
-              <ImageIcon className="h-4 w-4" />
-              <span>Daily Photos Management</span>
+              <span>Dashboard</span>
             </button>
 
             <button
@@ -484,6 +487,19 @@ function AdminPage() {
               <User className="h-4 w-4" />
               <span>Dean Details Management</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab("photos")}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
+                activeTab === "photos"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              <ImageIcon className="h-4 w-4" />
+              <span>Daily Photos Management</span>
+            </button>
           </div>
         </div>
       </div>
@@ -492,21 +508,9 @@ function AdminPage() {
       <main className="flex-1 pb-16">
         {activeTab === "events" && (
           <div>
-            {/* 5-Image Continuous Video Reel Marquee Carousel */}
-            <ForumCarousel />
-
-            {/* Six Clubs Layout: 3 on one side, 3 on the other side */}
-            <ClubNavigation
-              selectedClub={selectedClub}
-              selectedForum={selectedForumSlug}
-              onSelectClub={handleSelectClub}
-              onSelectForum={handleSelectForum}
-              isAdmin
-            />
-
-            {/* Submitted Events from user side displayed when forum is selected */}
-            {selectedClub && selectedForumName && selectedForumSlug && (
-              <div ref={adminEventsRef} className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-6">
+            {/* If a forum or event is selected from the sidebar, display its submitted events & documents */}
+            {selectedClub && selectedForumName && selectedForumSlug ? (
+              <div ref={adminEventsRef} className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-6">
                 <AdminEventsView
                   club={selectedClub}
                   forumName={selectedForumName}
@@ -514,8 +518,37 @@ function AdminPage() {
                   onClose={() => {
                     setSelectedForumName(null);
                     setSelectedForumSlug(null);
+                    setSelectedClub(null);
                   }}
                 />
+              </div>
+            ) : (
+              /* Same as Student Portal Dashboard: Clean looping video + Dean's Profile card (NO unnecessary clutter) */
+              <div className="w-full bg-white">
+                <section aria-label="Campus Loop Video Showcase" className="w-full">
+                  <LoopVideoShowcase
+                    video={activeFeaturedVideo}
+                    allVideos={allVideosList}
+                    onScrollToDean={() => {
+                      document
+                        .getElementById("admin-dean-profile-section")
+                        ?.scrollIntoView({ behavior: "smooth" });
+                    }}
+                  />
+                </section>
+
+                <section
+                  id="admin-dean-profile-section"
+                  aria-label="Dean's Directorate Profile"
+                  className="w-full bg-[#f8faff] py-12 sm:py-16 md:py-20 border-t border-slate-200/80"
+                >
+                  <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+                    <DeanDetailsCard
+                      dean={currentDean}
+                      onOpenEventsDrawer={() => setIsDrawerOpen(true)}
+                    />
+                  </div>
+                </section>
               </div>
             )}
           </div>
