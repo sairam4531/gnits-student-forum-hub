@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from "react";
 import { Menu } from "lucide-react";
 import { AnniversaryLogo } from "@/components/AnniversaryLogo";
 import { GnitsCollegeLogo } from "@/components/GnitsCollegeLogo";
@@ -6,7 +7,124 @@ interface StudentAffairsHeaderProps {
   onOpenDrawer: () => void;
 }
 
+interface ScrollingItem {
+  id: number;
+  x: number;
+  triggered: boolean;
+}
+
 export function StudentAffairsHeader({ onOpenDrawer }: StudentAffairsHeaderProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const textMeasureRef = useRef<HTMLSpanElement>(null);
+
+  const [messages, setMessages] = useState<ScrollingItem[]>([]);
+  const containerWidthRef = useRef<number>(0);
+  const textWidthRef = useRef<number>(0);
+  const idCounterRef = useRef<number>(0);
+
+  // Measure container and text width dynamically across screen sizes
+  useEffect(() => {
+    const updateDimensions = () => {
+      if (containerRef.current) {
+        containerWidthRef.current = containerRef.current.clientWidth;
+      }
+      if (textMeasureRef.current) {
+        textWidthRef.current = textMeasureRef.current.offsetWidth;
+      }
+    };
+
+    updateDimensions();
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateDimensions();
+    });
+
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+    if (textMeasureRef.current) {
+      resizeObserver.observe(textMeasureRef.current);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, []);
+
+  // Frame-by-frame animation: One title scrolls from right to left.
+  // When "Welcome" touches the left logo (x <= 0), the next title starts from the right side.
+  useEffect(() => {
+    let animationFrameId: number;
+    let lastTime = performance.now();
+
+    const loop = (currentTime: number) => {
+      let dt = (currentTime - lastTime) / 1000;
+      lastTime = currentTime;
+
+      // Prevent sudden jumps if browser tab is backgrounded
+      if (dt > 0.1) dt = 0.1;
+
+      const speed = 85; // pixels per second - readable, elegant pace
+      const cWidth = containerWidthRef.current;
+      const tWidth = textWidthRef.current;
+
+      if (cWidth > 0 && tWidth > 0) {
+        setMessages((prev) => {
+          let needsSpawn = false;
+
+          // If no messages exist yet, spawn the initial one from the right edge
+          if (prev.length === 0) {
+            idCounterRef.current += 1;
+            return [
+              {
+                id: idCounterRef.current,
+                x: cWidth,
+                triggered: false,
+              },
+            ];
+          }
+
+          const updated = prev.map((msg) => {
+            const nextX = msg.x - speed * dt;
+            let triggered = msg.triggered;
+
+            // When the front word "Welcome" reaches / touches the left logo (x <= 0)
+            if (!triggered && nextX <= 0) {
+              triggered = true;
+              needsSpawn = true;
+            }
+
+            return {
+              ...msg,
+              x: nextX,
+              triggered,
+            };
+          });
+
+          // Filter out items that have completely slid past the left logo
+          const remaining = updated.filter((msg) => msg.x > -tWidth - 10);
+
+          // When front touched the logo, spawn the next scroll from the right boundary
+          if (needsSpawn) {
+            idCounterRef.current += 1;
+            remaining.push({
+              id: idCounterRef.current,
+              x: cWidth,
+              triggered: false,
+            });
+          }
+
+          return remaining;
+        });
+      }
+
+      animationFrameId = requestAnimationFrame(loop);
+    };
+
+    animationFrameId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, []);
+
   return (
     <header className="sticky top-0 z-40 w-full bg-[#2563eb] text-white border-b-2 border-blue-700/80 shadow-md select-none">
       <div className="w-full px-2 sm:px-4 lg:px-6 h-18 sm:h-20 flex items-center justify-between gap-2 sm:gap-4">
@@ -33,21 +151,32 @@ export function StudentAffairsHeader({ onOpenDrawer }: StudentAffairsHeaderProps
           </div>
         </div>
 
-        {/* Center: Heading Scrolling from Right to Left till Logos */}
-        <div className="flex-1 min-w-0 overflow-hidden relative h-full flex items-center">
-          <div className="w-full overflow-hidden whitespace-nowrap">
-            <div className="inline-block animate-header-marquee will-change-transform">
-              <span className="text-base sm:text-xl md:text-2xl font-black text-black tracking-wide drop-shadow-xs px-8">
-                Welcome to Dean Student Affairs Portal
-              </span>
-              <span className="text-base sm:text-xl md:text-2xl font-black text-black tracking-wide drop-shadow-xs px-8">
-                Welcome to Dean Student Affairs Portal
-              </span>
-              <span className="text-base sm:text-xl md:text-2xl font-black text-black tracking-wide drop-shadow-xs px-8">
-                Welcome to Dean Student Affairs Portal
-              </span>
+        {/* Center: Heading Scrolling one after one from Right to Left till Logo */}
+        <div
+          ref={containerRef}
+          className="flex-1 min-w-0 overflow-hidden relative h-full flex items-center"
+        >
+          {/* Invisible text element used for exact responsive measurement */}
+          <span
+            ref={textMeasureRef}
+            className="absolute invisible pointer-events-none whitespace-nowrap text-base sm:text-xl md:text-2xl font-black tracking-wide"
+            aria-hidden="true"
+          >
+            Welcome to Dean Student Affairs Portal
+          </span>
+
+          {/* Scrolling Messages - Single title scrolling across one after one */}
+          {messages.map((item) => (
+            <div
+              key={item.id}
+              style={{
+                transform: `translate3d(${item.x}px, 0, 0)`,
+              }}
+              className="absolute whitespace-nowrap text-base sm:text-xl md:text-2xl font-black text-black tracking-wide drop-shadow-xs will-change-transform pointer-events-none"
+            >
+              Welcome to Dean Student Affairs Portal
             </div>
-          </div>
+          ))}
         </div>
 
         {/* Right Boundary: 28 Years of Excellence Logo */}
