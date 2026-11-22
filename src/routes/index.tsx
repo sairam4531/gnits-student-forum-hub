@@ -1,8 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
 import { StudentAffairsHeader } from "@/components/StudentAffairsHeader";
-import { DailyPhotosCard } from "@/components/DailyPhotosCard";
-import { CollegeVideoCard } from "@/components/CollegeVideoCard";
+import { LoopVideoShowcase } from "@/components/LoopVideoShowcase";
 import { DeanDetailsCard } from "@/components/DeanDetailsCard";
 import { PhotoGalleryModal } from "@/components/PhotoGalleryModal";
 import { EventsClubsDrawer } from "@/components/EventsClubsDrawer";
@@ -27,6 +26,7 @@ function StudentAffairsPortalPage() {
   const [photos, setPhotos] = useState<HomepagePhoto[]>([]);
   const [featuredPhotos, setFeaturedPhotos] = useState<HomepagePhoto[]>([]);
   const [featuredVideo, setFeaturedVideo] = useState<HomepageVideo | null>(null);
+  const [allVideos, setAllVideos] = useState<HomepageVideo[]>([]);
   const [dean, setDean] = useState<DeanDetails>({
     id: "dean-1",
     name: "Dr. K. Rama Linga Reddy",
@@ -85,38 +85,36 @@ function StudentAffairsPortalPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-100 text-slate-900 font-sans antialiased selection:bg-[#1e3a8a]/20">
-      {/* A. Header Section matching reference image */}
+    <div className="min-h-screen flex flex-col bg-slate-100 text-slate-900 font-sans antialiased selection:bg-[#2563eb]/20">
+      {/* 1. Top Header with scrolling welcome heading from right to left till logos */}
       <StudentAffairsHeader onOpenDrawer={() => setIsDrawerOpen(true)} />
 
-      {/* B. Main Dashboard Section */}
-      <main className="flex-1 bg-slate-100">
-        {/* Dashboard Content Container */}
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-10 md:py-12">
-          {/* Top Section: Daily Photos (Left) and College Video (Right) Side by Side */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 sm:gap-8 items-stretch">
-            {/* Left Section – Daily Photos (5 cols on md/lg) */}
-            <div className="md:col-span-5 flex flex-col">
-              <DailyPhotosCard
-                photos={featuredPhotos.length > 0 ? featuredPhotos : photos}
-                onOpenGallery={() => setIsGalleryOpen(true)}
-              />
-            </div>
+      {/* 2. Main Dashboard Section with best colours */}
+      <main className="flex-1 bg-gradient-to-b from-slate-100 via-slate-50 to-slate-100">
+        <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 py-6 sm:py-8 md:py-10 space-y-8">
+          {/* A. Middle Section: Videos will play in loop */}
+          <section aria-label="Campus Loop Video Showcase">
+            <LoopVideoShowcase
+              video={featuredVideo}
+              allVideos={allVideos.length > 0 ? allVideos : featuredVideo ? [featuredVideo] : []}
+              onOpenGallery={() => setIsGalleryOpen(true)}
+              featuredPhotos={featuredPhotos.length > 0 ? featuredPhotos : photos}
+            />
+          </section>
 
-            {/* Right Section – College Video (7 cols on md/lg) */}
-            <div className="md:col-span-7 flex flex-col">
-              <CollegeVideoCard video={featuredVideo} />
-            </div>
-          </div>
-
-          {/* C. Dean Details Section (Full-Width Card Below) */}
-          <DeanDetailsCard dean={dean} />
+          {/* B. Lower Section: Display Dean's Profile */}
+          <section aria-label="Dean's Directorate Profile">
+            <DeanDetailsCard
+              dean={dean}
+              onOpenEventsDrawer={() => setIsDrawerOpen(true)}
+            />
+          </section>
 
           {/* Conducted Events & Add Event Section when selected from the 3-lines menu */}
           {selectedClub && selectedForumName && selectedForumSlug && (
             <div
               ref={conductedEventsSectionRef}
-              className="mt-10 rounded-3xl bg-white/95 backdrop-blur-md p-6 sm:p-8 border border-white/80 shadow-2xl animate-in fade-in duration-300"
+              className="mt-10 rounded-3xl bg-white p-6 sm:p-8 border border-slate-200 shadow-xl animate-in fade-in duration-300"
             >
               <ConductedEventsView
                 club={selectedClub}
@@ -133,7 +131,7 @@ function StudentAffairsPortalPage() {
         </div>
       </main>
 
-      {/* Slide-out Drawer: "Available Events & Clubs" (Triggered by Hamburger 3-lines click) */}
+      {/* Slide-out Drawer: Available Events & Clubs (Triggered by Hamburger 3-lines click) */}
       <EventsClubsDrawer
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
@@ -142,7 +140,7 @@ function StudentAffairsPortalPage() {
         recentEvents={recentEvents}
       />
 
-      {/* Photo Gallery Lightbox Modal (Triggered by "View Gallery →" click) */}
+      {/* Photo Gallery Lightbox Modal (Triggered by "View Gallery" click) */}
       <PhotoGalleryModal
         isOpen={isGalleryOpen}
         onClose={() => setIsGalleryOpen(false)}
@@ -150,12 +148,12 @@ function StudentAffairsPortalPage() {
       />
 
       {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white/90 backdrop-blur-md py-6 text-center text-xs text-slate-500">
+      <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-500">
         <p className="font-bold text-slate-800">
-          G. Narayanamma Institute of Technology & Science (Autonomous, For Women)
+          G. Narayanamma Institute of Technology &amp; Science (Autonomous, For Women)
         </p>
         <p className="mt-1 text-slate-500">
-          Dean Student Affairs & Student Council Portal
+          Dean Student Affairs &amp; Student Council Portal
         </p>
       </footer>
     </div>

@@ -189,6 +189,25 @@
   animation-play-state: paused;
 }
 
+@keyframes header-marquee {
+  0% {
+    transform: translateX(50%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-header-marquee {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: header-marquee 16s linear infinite;
+}
+
+.animate-header-marquee:hover {
+  animation-play-state: paused;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .forum-marquee-track {
     animation: none;
