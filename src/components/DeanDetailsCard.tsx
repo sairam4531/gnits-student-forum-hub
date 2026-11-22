@@ -1,14 +1,4 @@
-import { useState } from "react";
-import {
-  User,
-  Mail,
-  Phone,
-  Building2,
-  Check,
-  Copy,
-  ShieldCheck,
-  Calendar,
-} from "lucide-react";
+import { User, Mail, Building2 } from "lucide-react";
 import type { DeanDetails } from "@/lib/local-homepage-store";
 
 interface DeanDetailsCardProps {
@@ -16,214 +6,83 @@ interface DeanDetailsCardProps {
   onOpenEventsDrawer?: () => void;
 }
 
-export function DeanDetailsCard({ dean, onOpenEventsDrawer }: DeanDetailsCardProps) {
-  const [copiedField, setCopiedField] = useState<string | null>(null);
-
-  const handleCopy = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedField(label);
-    setTimeout(() => setCopiedField(null), 2500);
-  };
-
-  const name = dean.name || "Dr. K. Rama Linga Reddy";
+export function DeanDetailsCard({ dean }: DeanDetailsCardProps) {
+  const name = dean.name || "Dr. Aparna Patle";
   const designation = dean.designation || "Dean, Student Affairs & Professor";
-  const email = dean.email || "dean.studentaffairs@gnits.ac.in";
-  const contact = dean.contact_number || "+91 040-23565648 / +91 9849000000";
+  const email = dean.email || "aparna.patle@gnits.ac.in";
+  const office = "Dean – Student Affairs, GNITS, Hyderabad";
 
   return (
-    <div className="w-full">
-      {/* Boxless Section Header */}
-      <div className="mb-8 sm:mb-12">
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-50 border border-blue-200 text-[#2563eb] text-xs font-bold uppercase tracking-wider mb-3">
-          <ShieldCheck className="h-4 w-4 text-[#2563eb]" />
-          <span>Directorate of Student Affairs &bull; Verified Office</span>
-        </div>
-        <h2 className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-900 tracking-tight">
-          Dean's Profile &amp; Directorate
+    <div className="w-full py-4">
+      {/* Title with centered underline matching design */}
+      <div className="text-center mb-8">
+        <h2 className="text-2xl sm:text-3xl font-black text-[#0f2757] tracking-tight">
+          Dean - Student Affairs Profile
         </h2>
-        <p className="text-sm sm:text-base text-slate-600 mt-1 max-w-2xl font-medium">
-          G. Narayanamma Institute of Technology &amp; Science (Autonomous, For Women)
-        </p>
+        <div className="w-14 h-1 bg-[#0f2757] mx-auto mt-2.5 rounded-full" />
       </div>
 
-      {/* Main Content Layout - Pure Open Layout (NO BOXES) */}
-      <div className="flex flex-col md:flex-row items-center md:items-start gap-8 sm:gap-12 lg:gap-16">
-        {/* Left Side: Portrait Photo (Open presentation, no box) */}
-        <div className="flex-shrink-0 flex flex-col items-center">
-          <div className="relative p-1 rounded-3xl bg-gradient-to-br from-[#2563eb] via-amber-400 to-[#1e3a8a] shadow-lg">
-            <div className="h-44 w-44 sm:h-52 sm:w-52 rounded-[22px] bg-slate-100 overflow-hidden flex items-center justify-center border-2 border-white">
-              {dean.profile_photo ? (
-                <img
-                  src={dean.profile_photo}
-                  alt={name}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center text-[#2563eb] w-full h-full bg-[#eff6ff]">
-                  <div className="h-20 w-20 rounded-full bg-[#2563eb]/20 flex items-center justify-center mb-2">
-                    <User className="h-12 w-12 text-[#2563eb]" />
-                  </div>
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    Dean's Portrait
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-3.5 inline-flex items-center gap-2 text-xs font-bold text-emerald-700 bg-emerald-50 px-3.5 py-1.5 rounded-full border border-emerald-200 shadow-xs">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Active Administration</span>
-          </div>
+      {/* Clean White Card with ONLY the requested data */}
+      <div className="max-w-2xl mx-auto rounded-2xl bg-white border border-slate-200/90 shadow-sm p-6 sm:p-8 flex flex-col sm:flex-row items-center gap-6 sm:gap-8">
+        {/* Left Side: Photo Frame with "Dean Photo" */}
+        <div className="w-36 h-40 sm:w-40 sm:h-44 rounded-2xl border border-slate-300 flex flex-col items-center justify-center p-3 bg-slate-50/50 flex-shrink-0">
+          {dean.profile_photo ? (
+            <img
+              src={dean.profile_photo}
+              alt={name}
+              className="w-full h-full object-cover rounded-xl"
+            />
+          ) : (
+            <>
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-slate-200/80 flex items-center justify-center mb-2">
+                <User className="w-10 h-10 sm:w-12 sm:h-12 text-slate-400" />
+              </div>
+              <span className="text-xs sm:text-sm font-bold text-slate-800">
+                Dean Photo
+              </span>
+            </>
+          )}
         </div>
 
-        {/* Right Side: Information with Aligned Labels & Lines (NO BOXES) */}
-        <div className="flex-1 w-full space-y-6">
-          {/* Header info */}
+        {/* Vertical Divider */}
+        <div className="hidden sm:block w-px self-stretch bg-slate-200" />
+
+        {/* Right Side: Exact Profile Details */}
+        <div className="flex-1 w-full space-y-4">
           <div>
-            <span className="text-xs font-black uppercase tracking-wider text-amber-700 bg-amber-50 px-3 py-1 rounded-md border border-amber-200 inline-block mb-2">
-              Institutional Leadership
-            </span>
-            <h3 className="text-2xl sm:text-3xl md:text-4xl font-black text-slate-900 tracking-tight">
+            <h3 className="text-2xl sm:text-3xl font-black text-[#0f2757] tracking-tight">
               {name}
             </h3>
-            <p className="text-base sm:text-xl font-bold text-[#2563eb] mt-1">
+            <p className="text-sm sm:text-base font-semibold text-slate-600 mt-0.5">
               {designation}
             </p>
           </div>
 
-          {/* Details Rows with Aligned Colons and Underlines (matching sketch, completely box-free) */}
-          <div className="space-y-4 pt-2">
-            {/* Name Row */}
-            <div className="group">
-              <div className="flex items-center gap-2 sm:gap-3 text-sm sm:text-base">
-                <span className="w-28 sm:w-32 font-bold text-slate-600 flex-shrink-0">
-                  Name
-                </span>
-                <span className="font-bold text-slate-700 flex-shrink-0">:</span>
-                <span className="font-extrabold text-slate-900 truncate">
-                  {name}
-                </span>
-              </div>
-              <div className="mt-2 h-px w-full bg-slate-200" />
-            </div>
-
-            {/* Designation Row */}
-            <div className="group">
-              <div className="flex items-center gap-2 sm:gap-3 text-sm sm:text-base">
-                <span className="w-28 sm:w-32 font-bold text-slate-600 flex-shrink-0">
-                  Designation
-                </span>
-                <span className="font-bold text-slate-700 flex-shrink-0">:</span>
-                <span className="font-bold text-[#2563eb] truncate">
-                  {designation}
-                </span>
-              </div>
-              <div className="mt-2 h-px w-full bg-slate-200" />
-            </div>
-
+          <div className="space-y-3 pt-1">
             {/* Email Row */}
-            <div className="group">
-              <div className="flex items-center justify-between gap-2 text-sm sm:text-base">
-                <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                  <span className="w-28 sm:w-32 font-bold text-slate-600 flex-shrink-0 flex items-center gap-1.5">
-                    <Mail className="h-4 w-4 text-[#2563eb]" />
-                    <span>Email</span>
-                  </span>
-                  <span className="font-bold text-slate-700 flex-shrink-0">:</span>
-                  <a
-                    href={`mailto:${email}`}
-                    className="font-bold text-slate-900 hover:text-[#2563eb] underline-offset-4 hover:underline truncate"
-                  >
-                    {email}
-                  </a>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleCopy(email, "email")}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                  title="Copy email"
-                >
-                  {copiedField === "email" ? (
-                    <Check className="h-4 w-4 text-emerald-600" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                </button>
+            <div className="flex items-center gap-3 text-sm sm:text-base">
+              <div className="h-8 w-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+                <Mail className="h-4 w-4" />
               </div>
-              <div className="mt-2 h-px w-full bg-slate-200" />
-            </div>
-
-            {/* Contact Row */}
-            <div className="group">
-              <div className="flex items-center justify-between gap-2 text-sm sm:text-base">
-                <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                  <span className="w-28 sm:w-32 font-bold text-slate-600 flex-shrink-0 flex items-center gap-1.5">
-                    <Phone className="h-4 w-4 text-[#2563eb]" />
-                    <span>Contact</span>
-                  </span>
-                  <span className="font-bold text-slate-700 flex-shrink-0">:</span>
-                  <a
-                    href={`tel:${contact.split("/")[0]?.trim() || contact}`}
-                    className="font-bold text-slate-900 hover:text-[#2563eb] truncate"
-                  >
-                    {contact}
-                  </a>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleCopy(contact, "contact")}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                  title="Copy contact number"
-                >
-                  {copiedField === "contact" ? (
-                    <Check className="h-4 w-4 text-emerald-600" />
-                  ) : (
-                    <Copy className="h-4 w-4" />
-                  )}
-                </button>
-              </div>
-              <div className="mt-2 h-px w-full bg-slate-200" />
-            </div>
-
-            {/* Office Location Row */}
-            <div className="group">
-              <div className="flex items-center gap-2 sm:gap-3 text-sm sm:text-base">
-                <span className="w-28 sm:w-32 font-bold text-slate-600 flex-shrink-0 flex items-center gap-1.5">
-                  <Building2 className="h-4 w-4 text-[#2563eb]" />
-                  <span>Office</span>
-                </span>
-                <span className="font-bold text-slate-700 flex-shrink-0">:</span>
-                <span className="font-semibold text-slate-800">
-                  Directorate of Student Affairs, Admin Block, GNITS Campus
-                </span>
-              </div>
-              <div className="mt-2 h-px w-full bg-slate-200" />
-            </div>
-          </div>
-
-          {/* Quick Action Buttons */}
-          <div className="pt-4 flex flex-wrap gap-4">
-            <a
-              href={`mailto:${email}?subject=Student%20Affairs%20Query`}
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#2563eb] hover:bg-[#1d4ed8] text-white text-sm font-bold shadow-md hover:shadow-lg transition-all"
-            >
-              <Mail className="h-4 w-4" />
-              <span>Email Dean's Office</span>
-            </a>
-
-            {onOpenEventsDrawer && (
-              <button
-                type="button"
-                onClick={onOpenEventsDrawer}
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold shadow-md hover:shadow-lg transition-all cursor-pointer"
+              <span className="font-bold text-slate-900 min-w-[55px]">Email :</span>
+              <a
+                href={`mailto:${email}`}
+                className="font-medium text-slate-700 hover:text-blue-600 transition-colors truncate"
               >
-                <Calendar className="h-4 w-4 text-amber-400" />
-                <span>Explore Student Clubs &amp; Submit Event</span>
-              </button>
-            )}
+                {email}
+              </a>
+            </div>
+
+            {/* Office Row */}
+            <div className="flex items-center gap-3 text-sm sm:text-base">
+              <div className="h-8 w-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0">
+                <Building2 className="h-4 w-4" />
+              </div>
+              <span className="font-bold text-slate-900 min-w-[55px]">Office :</span>
+              <span className="font-medium text-slate-700">
+                {office}
+              </span>
+            </div>
           </div>
         </div>
       </div>

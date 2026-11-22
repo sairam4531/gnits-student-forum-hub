@@ -29,11 +29,11 @@ function StudentAffairsPortalPage() {
   const [allVideos, setAllVideos] = useState<HomepageVideo[]>([]);
   const [dean, setDean] = useState<DeanDetails>({
     id: "dean-1",
-    name: "Dr. K. Rama Linga Reddy",
+    name: "Dr. Aparna Patle",
     designation: "Dean, Student Affairs & Professor",
     profile_photo: "",
-    email: "dean.studentaffairs@gnits.ac.in",
-    contact_number: "+91 040-23565648 / +91 9849000000",
+    email: "aparna.patle@gnits.ac.in",
+    contact_number: "",
     updated_at: new Date().toISOString(),
   });
 
