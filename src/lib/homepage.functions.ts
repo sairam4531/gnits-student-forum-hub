@@ -204,8 +204,8 @@ export const togglePhotoStatusServerFn = createServerFn({ method: "POST" })
 // Video CRUD
 const VideoInputSchema = z.object({
   id: z.string().optional(),
-  title: z.string().min(1, "Title is required"),
-  description: z.string().optional(),
+  title: z.string().optional().default("GNITS Campus Video"),
+  description: z.string().optional().default(""),
   video_url: z.string().optional(),
   videoBase64: z.string().optional(),
   videoFileName: z.string().optional(),
@@ -229,12 +229,28 @@ export const saveVideoAdminServerFn = createServerFn({ method: "POST" })
     let finalVideoUrl = data.video_url || "";
     let finalThumbnailUrl = data.thumbnail_url || "";
 
+    // Convert Google Drive view links to direct streaming links if provided
+    if (finalVideoUrl.includes("drive.google.com")) {
+      const match = finalVideoUrl.match(/\/d\/([a-zA-Z0-9_-]+)/);
+      if (match && match[1]) {
+        finalVideoUrl = `https://drive.google.com/uc?export=download&id=${match[1]}`;
+      }
+    }
+
     if (data.videoBase64 && data.videoFileName) {
-      finalVideoUrl = saveUploadedMedia("videos", data.videoFileName, data.videoBase64);
+      try {
+        finalVideoUrl = saveUploadedMedia("videos", data.videoFileName, data.videoBase64);
+      } catch (err) {
+        console.warn("Could not save video to disk:", err);
+      }
     }
 
     if (data.thumbnailBase64 && data.thumbnailFileName) {
-      finalThumbnailUrl = saveUploadedMedia("thumbnails", data.thumbnailFileName, data.thumbnailBase64);
+      try {
+        finalThumbnailUrl = saveUploadedMedia("thumbnails", data.thumbnailFileName, data.thumbnailBase64);
+      } catch (err) {
+        console.warn("Could not save thumbnail to disk:", err);
+      }
     }
 
     if (!finalThumbnailUrl) {
@@ -247,6 +263,8 @@ export const saveVideoAdminServerFn = createServerFn({ method: "POST" })
     }
 
     const now = new Date().toISOString();
+    const finalTitle = data.title?.trim() || data.videoFileName || "GNITS Campus Video";
+    const finalDescription = data.description?.trim() || "";
 
     // If setting as featured, unfeature others
     if (data.is_featured) {
@@ -260,8 +278,8 @@ export const saveVideoAdminServerFn = createServerFn({ method: "POST" })
       if (idx === -1) throw new Error("Video not found.");
       store.videos[idx] = {
         ...store.videos[idx]!,
-        title: data.title,
-        description: data.description || "",
+        title: finalTitle,
+        description: finalDescription,
         video_url: finalVideoUrl,
         thumbnail_url: finalThumbnailUrl,
         is_active: data.is_active,
@@ -272,8 +290,8 @@ export const saveVideoAdminServerFn = createServerFn({ method: "POST" })
     } else {
       const newVideo: HomepageVideo = {
         id: `video-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        title: data.title,
-        description: data.description || "",
+        title: finalTitle,
+        description: finalDescription,
         video_url: finalVideoUrl,
         thumbnail_url: finalThumbnailUrl,
         is_active: data.is_active,
