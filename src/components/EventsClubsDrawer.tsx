@@ -21,6 +21,9 @@ import {
   Microscope,
   Shield,
   LayoutDashboard,
+  LogOut,
+  Settings,
+  FileSpreadsheet,
 } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
@@ -38,6 +41,14 @@ interface EventsClubsDrawerProps {
   onOpenSubmitModal?: (club: ForumClub, forumName: string, forumSlug: string) => void;
   onSelectDashboard?: () => void;
   isAdmin?: boolean;
+  adminProfile?: {
+    username: string;
+    display_name: string;
+    avatar_url?: string | null;
+  } | null;
+  onExportMasterExcel?: () => void;
+  onOpenProfile?: () => void;
+  onSignOut?: () => void;
   recentEvents?: PublicEventRecord[];
 }
 
@@ -47,6 +58,10 @@ export function EventsClubsDrawer({
   onSelectForum,
   onSelectDashboard,
   isAdmin = false,
+  adminProfile,
+  onExportMasterExcel,
+  onOpenProfile,
+  onSignOut,
 }: EventsClubsDrawerProps) {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
@@ -422,9 +437,76 @@ export function EventsClubsDrawer({
           )}
         </div>
 
-        {/* Compact Footer: Switch between Student Portal and Admin Portal */}
-        <div className="p-2.5 border-t border-slate-200 bg-slate-50">
-          {isAdmin ? (
+        {/* Compact Footer: When Admin, provide signed-in status and admin tools */}
+        {isAdmin ? (
+          <div className="p-3 border-t border-slate-200 bg-slate-50 space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="h-7 w-7 rounded-lg bg-[#0f2757] text-white flex items-center justify-center font-black text-xs flex-shrink-0 overflow-hidden">
+                  {adminProfile?.avatar_url ? (
+                    <img
+                      src={adminProfile.avatar_url}
+                      alt="Admin"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    "SC"
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <span className="text-xs font-bold text-slate-800 block truncate">
+                    {adminProfile?.display_name || "Student Council Admin"}
+                  </span>
+                  <span className="text-[10px] text-slate-500 truncate block">
+                    @{adminProfile?.username || "studentcouncil"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1">
+                {onOpenProfile && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenProfile();
+                    }}
+                    className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+                    title="Edit Admin Profile"
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                {onSignOut && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onSignOut();
+                    }}
+                    className="p-1.5 rounded-lg hover:bg-rose-100 text-rose-600 hover:text-rose-800 transition-colors cursor-pointer"
+                    title="Sign Out"
+                  >
+                    <LogOut className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {onExportMasterExcel && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onExportMasterExcel();
+                }}
+                className="w-full flex items-center justify-center gap-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 py-1.5 text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Master Excel Export</span>
+              </button>
+            )}
+
             <Link
               to="/"
               onClick={onClose}
@@ -433,7 +515,9 @@ export function EventsClubsDrawer({
               <Users className="h-3.5 w-3.5 text-orange-600" />
               <span>Switch to Student Portal</span>
             </Link>
-          ) : (
+          </div>
+        ) : (
+          <div className="p-2.5 border-t border-slate-200 bg-slate-50">
             <Link
               to="/admin"
               onClick={onClose}
@@ -442,8 +526,8 @@ export function EventsClubsDrawer({
               <ShieldCheck className="h-3.5 w-3.5 text-orange-600" />
               <span>Admin Portal Login</span>
             </Link>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

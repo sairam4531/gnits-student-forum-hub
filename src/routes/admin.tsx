@@ -1,23 +1,18 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect, useRef } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useState, useEffect } from "react";
 import {
   ShieldCheck,
   Lock,
   User,
   Eye,
   EyeOff,
-  LogOut,
-  Settings,
   Sparkles,
   Loader2,
   AlertCircle,
-  FileSpreadsheet,
-  Image as ImageIcon,
   Video as VideoIcon,
-  LayoutDashboard,
-  Calendar,
+  Image as ImageIcon,
+  X,
 } from "lucide-react";
-import { AdminEventsView } from "@/components/AdminEventsView";
 import { AdminProfileModal } from "@/components/AdminProfileModal";
 import { DailyPhotosManage } from "@/components/admin/DailyPhotosManage";
 import { CollegeVideosManage } from "@/components/admin/CollegeVideosManage";
@@ -25,7 +20,6 @@ import { DeanDetailsManage } from "@/components/admin/DeanDetailsManage";
 import { StudentAffairsHeader } from "@/components/StudentAffairsHeader";
 import { EventsClubsDrawer } from "@/components/EventsClubsDrawer";
 import { LoopVideoShowcase } from "@/components/LoopVideoShowcase";
-import { DeanDetailsCard } from "@/components/DeanDetailsCard";
 import {
   adminLoginServerFn,
   getAdminSessionServerFn,
@@ -38,7 +32,6 @@ import {
   getAdminHomepageDataServerFn,
 } from "@/lib/homepage.functions";
 import type { HomepageDataStore } from "@/lib/local-homepage-store";
-import { type ForumClub } from "@/lib/student-forums";
 import {
   getClientHomepageData,
   mergeServerWithClient,
@@ -50,6 +43,7 @@ export const Route = createFileRoute("/admin")({
 });
 
 function AdminPage() {
+  const navigate = useNavigate();
   const [checkingSession, setCheckingSession] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
@@ -65,16 +59,11 @@ function AdminPage() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-  // Active Admin Tab
-  const [activeTab, setActiveTab] = useState<"events" | "photos" | "videos" | "dean">("events");
+  // Modals for Videos and Daily Photos Management
+  const [isVideosModalOpen, setIsVideosModalOpen] = useState(false);
+  const [isPhotosModalOpen, setIsPhotosModalOpen] = useState(false);
+
   const [homepageData, setHomepageData] = useState<HomepageDataStore | null>(null);
-
-  // Forum selection state
-  const [selectedClub, setSelectedClub] = useState<ForumClub | null>(null);
-  const [selectedForumName, setSelectedForumName] = useState<string | null>(null);
-  const [selectedForumSlug, setSelectedForumSlug] = useState<string | null>(null);
-
-  const adminEventsRef = useRef<HTMLDivElement>(null);
 
   const loadHomepageData = async () => {
     try {
@@ -148,33 +137,6 @@ function AdminPage() {
     }
     setIsAuthenticated(false);
     setAdminProfile(null);
-    setSelectedClub(null);
-    setSelectedForumName(null);
-    setSelectedForumSlug(null);
-  };
-
-  const handleSelectClub = (club: ForumClub) => {
-    setSelectedClub(club);
-    if (club.forums.length === 1 && club.forums[0]) {
-      const singleForum = club.forums[0];
-      setSelectedForumName(singleForum);
-      setSelectedForumSlug(club.slug);
-      setTimeout(() => {
-        adminEventsRef.current?.scrollIntoView({ behavior: "smooth" });
-      }, 100);
-    } else {
-      setSelectedForumName(null);
-      setSelectedForumSlug(null);
-    }
-  };
-
-  const handleSelectForum = (club: ForumClub, forumName: string, forumSlug: string) => {
-    setSelectedClub(club);
-    setSelectedForumName(forumName);
-    setSelectedForumSlug(forumSlug);
-    setTimeout(() => {
-      adminEventsRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, 100);
   };
 
   // Export Complete Global Portal Master Excel
@@ -294,7 +256,7 @@ function AdminPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-3 text-muted-foreground hover:text-foreground"
+                    className="absolute right-3.5 top-3 text-muted-foreground hover:text-foreground cursor-pointer"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -329,7 +291,7 @@ function AdminPage() {
                     setUsername("studentcouncil");
                     setPassword("studentcouncil@1234");
                   }}
-                  className="text-xs text-primary font-medium hover:underline inline-flex items-center gap-1"
+                  className="text-xs text-primary font-medium hover:underline inline-flex items-center gap-1 cursor-pointer"
                 >
                   <Sparkles className="h-3.5 w-3.5" />
                   <span>Auto-fill Demo Credentials</span>
@@ -347,13 +309,19 @@ function AdminPage() {
           isOpen={isDrawerOpen}
           onClose={() => setIsDrawerOpen(false)}
           onSelectForum={(club, forumName, forumSlug) => {
-            // If not logged in, navigate to public event page
-            window.location.href = `/events?club=${club.slug}&forum=${encodeURIComponent(forumName)}&slug=${forumSlug}`;
+            navigate({
+              to: "/events",
+              search: {
+                club: club.slug,
+                forum: forumName,
+                slug: forumSlug,
+              },
+            });
           }}
           onSelectDashboard={() => {
-            window.location.href = "/";
+            navigate({ to: "/" });
           }}
-          isAdmin={true}
+          isAdmin={false}
         />
       </div>
     );
@@ -379,207 +347,68 @@ function AdminPage() {
         title="Welcome to Dean Student Affairs Admin Portal"
       />
 
-      {/* Admin Action Sub-Bar */}
-      <div className="border-b border-border/80 bg-muted/40 py-2.5 px-4 sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground font-black text-xs shadow-sm">
-              {adminProfile?.avatar_url ? (
-                <img
-                  src={adminProfile.avatar_url}
-                  alt="Admin"
-                  className="h-full w-full object-cover rounded-xl"
-                />
-              ) : (
-                "SC"
-              )}
-            </div>
-            <div>
-              <span className="text-xs sm:text-sm font-bold text-foreground block">
-                {adminProfile?.display_name || "GNITS Student Council"}
-              </span>
-              <span className="text-[11px] text-muted-foreground">
-                Signed in as @{adminProfile?.username || "studentcouncil"}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5">
-            <button
-              type="button"
-              onClick={handleExportMasterExcel}
-              className="hidden sm:inline-flex items-center gap-1.5 rounded-lg border border-emerald-600/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20 transition-colors shadow-sm"
-              title="Download Master Excel Report of all campus events"
-            >
-              <FileSpreadsheet className="h-3.5 w-3.5" />
-              <span>Master Excel Export</span>
-            </button>
-
-            {adminProfile && (
-              <button
-                type="button"
-                onClick={() => setIsProfileModalOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted transition-colors shadow-sm"
-                title="Edit administrator display name & avatar"
-              >
-                <Settings className="h-3.5 w-3.5 text-muted-foreground" />
-                <span>Profile</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/20 transition-colors"
-              title="Sign out of admin session"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              <span>Sign Out</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Admin Section Tabs Navigation Bar */}
-      <div className="border-b border-border bg-card">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-2 overflow-x-auto py-2.5">
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedClub(null);
-                setSelectedForumName(null);
-                setSelectedForumSlug(null);
-                setActiveTab("events");
-              }}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
-                activeTab === "events"
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
-            >
-              <LayoutDashboard className="h-4 w-4" />
-              <span>Dashboard</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab("videos")}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
-                activeTab === "videos"
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
-            >
-              <VideoIcon className="h-4 w-4" />
-              <span>College Video Management</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab("dean")}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
-                activeTab === "dean"
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
-            >
-              <User className="h-4 w-4" />
-              <span>Dean Details Management</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab("photos")}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap cursor-pointer ${
-                activeTab === "photos"
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
-            >
-              <ImageIcon className="h-4 w-4" />
-              <span>Daily Photos Management</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content Area based on Tab */}
+      {/* Main Admin Dashboard: Clean Campus Video Showcase + Dean Profile Editor directly below it */}
       <main className="flex-1 pb-16">
-        {activeTab === "events" && (
-          <div>
-            {/* If a forum or event is selected from the sidebar, display its submitted events & documents */}
-            {selectedClub && selectedForumName && selectedForumSlug ? (
-              <div ref={adminEventsRef} className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-6">
-                <AdminEventsView
-                  club={selectedClub}
-                  forumName={selectedForumName}
-                  forumSlug={selectedForumSlug}
-                  onClose={() => {
-                    setSelectedForumName(null);
-                    setSelectedForumSlug(null);
-                    setSelectedClub(null);
-                  }}
-                />
-              </div>
-            ) : (
-              /* Same as Student Portal Dashboard: Clean looping video + Dean's Profile card (NO unnecessary clutter) */
-              <div className="w-full bg-white">
-                <section aria-label="Campus Loop Video Showcase" className="w-full">
-                  <LoopVideoShowcase
-                    video={activeFeaturedVideo}
-                    allVideos={allVideosList}
-                    onScrollToDean={() => {
-                      document
-                        .getElementById("admin-dean-profile-section")
-                        ?.scrollIntoView({ behavior: "smooth" });
-                    }}
-                  />
-                </section>
+        <div className="w-full bg-white">
+          {/* 1. College Dashboard Video Showcase */}
+          <section aria-label="Campus Loop Video Showcase" className="w-full">
+            <LoopVideoShowcase
+              video={activeFeaturedVideo}
+              allVideos={allVideosList}
+              onScrollToDean={() => {
+                document
+                  .getElementById("admin-dean-profile-section")
+                  ?.scrollIntoView({ behavior: "smooth" });
+              }}
+            />
+          </section>
 
-                <section
-                  id="admin-dean-profile-section"
-                  aria-label="Dean's Directorate Profile"
-                  className="w-full bg-[#f8faff] py-12 sm:py-16 md:py-20 border-t border-slate-200/80"
+          {/* 2. Admin Quick Control Bar right below video */}
+          <div className="border-y border-slate-200/80 bg-slate-50/90 py-3 px-4 sm:px-6 lg:px-8">
+            <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 text-slate-700 font-bold">
+                <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Dean Student Affairs Admin Control Dashboard</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsVideosModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-800 font-bold shadow-2xs transition-colors cursor-pointer"
+                  title="Upload or configure campus highlight videos"
                 >
-                  <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
-                    <DeanDetailsCard
-                      dean={currentDean}
-                      onOpenEventsDrawer={() => setIsDrawerOpen(true)}
-                    />
-                  </div>
-                </section>
+                  <VideoIcon className="h-3.5 w-3.5 text-orange-600" />
+                  <span>College Video Management</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsPhotosModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-800 font-bold shadow-2xs transition-colors cursor-pointer"
+                  title="Manage daily carousel photos"
+                >
+                  <ImageIcon className="h-3.5 w-3.5 text-orange-600" />
+                  <span>Daily Photos Management</span>
+                </button>
               </div>
-            )}
+            </div>
           </div>
-        )}
 
-        {activeTab === "photos" && (
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-8">
-            <DailyPhotosManage
-              photos={homepageData?.photos || getClientHomepageData().photos}
-              onRefresh={loadHomepageData}
-            />
-          </div>
-        )}
-
-        {activeTab === "videos" && (
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-8">
-            <CollegeVideosManage
-              videos={homepageData?.videos || getClientHomepageData().videos}
-              onRefresh={loadHomepageData}
-            />
-          </div>
-        )}
-
-        {activeTab === "dean" && (
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-8">
-            <DeanDetailsManage
-              dean={homepageData?.dean || getClientHomepageData().dean}
-              onRefresh={loadHomepageData}
-            />
-          </div>
-        )}
+          {/* 3. Dean Profile Editor directly below the video */}
+          <section
+            id="admin-dean-profile-section"
+            aria-label="Dean's Profile Editor"
+            className="w-full bg-[#f8faff] py-10 sm:py-14 border-b border-slate-200/80"
+          >
+            <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+              <DeanDetailsManage
+                dean={currentDean}
+                onRefresh={loadHomepageData}
+              />
+            </div>
+          </section>
+        </div>
       </main>
 
       {/* Admin Profile Modal */}
@@ -592,26 +421,67 @@ function AdminPage() {
         />
       )}
 
+      {/* College Videos Management Modal */}
+      {isVideosModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-6 sm:p-8 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+            <button
+              type="button"
+              onClick={() => setIsVideosModalOpen(false)}
+              className="absolute right-5 top-5 p-2 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <CollegeVideosManage
+              videos={homepageData?.videos || getClientHomepageData().videos}
+              onRefresh={loadHomepageData}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Daily Photos Management Modal */}
+      {isPhotosModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-6 sm:p-8 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+            <button
+              type="button"
+              onClick={() => setIsPhotosModalOpen(false)}
+              className="absolute right-5 top-5 p-2 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <DailyPhotosManage
+              photos={homepageData?.photos || getClientHomepageData().photos}
+              onRefresh={loadHomepageData}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Slide-out Drawer: Events & Clubs Navigation (with Dashboard at top) */}
       <EventsClubsDrawer
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         onSelectForum={(club, forumName, forumSlug) => {
-          setSelectedClub(club);
-          setSelectedForumName(forumName);
-          setSelectedForumSlug(forumSlug);
-          setActiveTab("events");
-          setTimeout(() => {
-            adminEventsRef.current?.scrollIntoView({ behavior: "smooth" });
-          }, 100);
+          // Open on dedicated new page, NEVER in dashboard
+          navigate({
+            to: "/events",
+            search: {
+              club: club.slug,
+              forum: forumName,
+              slug: forumSlug,
+            },
+          });
         }}
         onSelectDashboard={() => {
-          setSelectedClub(null);
-          setSelectedForumName(null);
-          setSelectedForumSlug(null);
-          setActiveTab("events");
+          window.scrollTo({ top: 0, behavior: "smooth" });
         }}
         isAdmin={true}
+        adminProfile={adminProfile}
+        onExportMasterExcel={handleExportMasterExcel}
+        onOpenProfile={() => setIsProfileModalOpen(true)}
+        onSignOut={handleLogout}
       />
 
       {/* Footer */}

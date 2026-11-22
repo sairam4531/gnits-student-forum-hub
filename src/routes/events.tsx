@@ -1,15 +1,30 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
-import { ArrowLeft, Home, Calendar, Sparkles } from "lucide-react";
+import {
+  ArrowLeft,
+  Home,
+  Calendar,
+  ShieldCheck,
+  Eye,
+  FileSpreadsheet,
+} from "lucide-react";
 import { StudentAffairsHeader } from "@/components/StudentAffairsHeader";
 import { ConductedEventsView } from "@/components/ConductedEventsView";
+import { AdminEventsView } from "@/components/AdminEventsView";
 import { EventsClubsDrawer } from "@/components/EventsClubsDrawer";
 import { forums, type ForumClub } from "@/lib/student-forums";
 import {
   getAllPublicEventsServerFn,
   type PublicEventRecord,
 } from "@/lib/events.functions";
+import {
+  getAdminSessionServerFn,
+  getAdminProfileServerFn,
+  getAllAdminEventsServerFn,
+  type AdminProfileRecord,
+} from "@/lib/admin.functions";
 import { getClientEvents, saveClientEvent } from "@/lib/client-portal-store";
+import * as XLSX from "xlsx";
 
 interface EventSearchState {
   club?: string;
@@ -35,6 +50,11 @@ function DedicatedEventPage() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [recentEvents, setRecentEvents] = useState<PublicEventRecord[]>([]);
 
+  // Admin authentication state
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminProfile, setAdminProfile] = useState<AdminProfileRecord | null>(null);
+  const [adminViewMode, setAdminViewMode] = useState<"admin" | "student">("admin");
+
   const clubSlug = search.club || "technical-events";
   const forumName = search.forum || "ISTE";
   const forumSlug = search.slug || "iste";
@@ -43,8 +63,20 @@ function DedicatedEventPage() {
   const selectedClub: ForumClub =
     forums.find((c) => c.slug === clubSlug) || forums[0]!;
 
+  // Check admin session and load events
   useEffect(() => {
-    async function loadEvents() {
+    async function initPage() {
+      try {
+        const session = await getAdminSessionServerFn();
+        if (session.authenticated) {
+          setIsAdmin(true);
+          const profile = await getAdminProfileServerFn();
+          setAdminProfile(profile);
+        }
+      } catch {
+        // Not admin or guest
+      }
+
       try {
         const events = await getAllPublicEventsServerFn();
         if (events && events.length > 0) {
@@ -65,7 +97,8 @@ function DedicatedEventPage() {
         setRecentEvents(getClientEvents());
       }
     }
-    loadEvents();
+
+    initPage();
   }, []);
 
   const handleSelectForum = (
@@ -83,22 +116,76 @@ function DedicatedEventPage() {
     });
   };
 
+  const handleExportMasterExcel = async () => {
+    try {
+      const allEvents = await getAllAdminEventsServerFn();
+      if (!allEvents || allEvents.length === 0) {
+        alert("No submitted events available for export.");
+        return;
+      }
+
+      const rows = allEvents.map((ev, i) => ({
+        "S.No": i + 1,
+        "Event ID": ev.id,
+        "Event Name": ev.event_name,
+        "Club Slug": ev.club_slug,
+        "Forum Slug": ev.forum_slug,
+        "From Date": ev.event_start,
+        "To Date": ev.event_end,
+        "Resource Persons": ev.resource_persons,
+        "Submitter Name": ev.submitter_name || "N/A",
+        "Submitter Email": ev.submitter_email || "N/A",
+        "Report File": ev.report_file_name,
+        "Photos Count": ev.photo_file_names?.length || 0,
+        "Submitted At": new Date(ev.created_at).toLocaleString(),
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "All Forum Events");
+      worksheet["!cols"] = Object.keys(rows[0] || {}).map(() => ({ wch: 25 }));
+      XLSX.writeFile(
+        workbook,
+        `GNITS_Student_Council_Master_Report_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      );
+    } catch (err: unknown) {
+      alert("Failed to export Excel: " + (err instanceof Error ? err.message : "Error"));
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans antialiased selection:bg-[#2563eb]/20">
       {/* 1. Header with Scrolling Welcome & 3-lines menu */}
-      <StudentAffairsHeader onOpenDrawer={() => setIsDrawerOpen(true)} />
+      <StudentAffairsHeader
+        onOpenDrawer={() => setIsDrawerOpen(true)}
+        title={
+          isAdmin
+            ? "Welcome to Dean Student Affairs Admin Portal"
+            : undefined
+        }
+      />
 
       {/* 2. Breadcrumb & Navigation Bar */}
       <div className="bg-white border-b border-slate-200 shadow-2xs sticky top-18 sm:top-20 z-30">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm font-semibold text-slate-600 truncate">
-            <Link
-              to="/"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold transition-colors cursor-pointer flex-shrink-0"
-            >
-              <Home className="h-3.5 w-3.5" />
-              <span>Dashboard</span>
-            </Link>
+            {isAdmin ? (
+              <Link
+                to="/admin"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-800 font-bold border border-orange-200 transition-colors cursor-pointer flex-shrink-0"
+              >
+                <ArrowLeft className="h-3.5 w-3.5 text-orange-600" />
+                <span>Back to Admin Dashboard</span>
+              </Link>
+            ) : (
+              <Link
+                to="/"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold transition-colors cursor-pointer flex-shrink-0"
+              >
+                <Home className="h-3.5 w-3.5" />
+                <span>Dashboard</span>
+              </Link>
+            )}
 
             <span className="text-slate-300">/</span>
 
@@ -113,15 +200,46 @@ function DedicatedEventPage() {
             </span>
           </div>
 
-          {/* Quick Switch Button */}
-          <button
-            type="button"
-            onClick={() => setIsDrawerOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold border border-orange-200 transition-colors cursor-pointer flex-shrink-0"
-          >
-            <Calendar className="h-3.5 w-3.5" />
-            <span>Switch Event / Club</span>
-          </button>
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {isAdmin && (
+              <div className="hidden sm:inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setAdminViewMode("admin")}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                    adminViewMode === "admin"
+                      ? "bg-white text-slate-900 shadow-xs font-bold"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <ShieldCheck className="h-3.5 w-3.5 text-orange-600" />
+                  <span>Admin Reports</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminViewMode("student")}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                    adminViewMode === "student"
+                      ? "bg-white text-slate-900 shadow-xs font-bold"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <Eye className="h-3.5 w-3.5 text-slate-500" />
+                  <span>Student View</span>
+                </button>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setIsDrawerOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold border border-orange-200 transition-colors cursor-pointer"
+            >
+              <Calendar className="h-3.5 w-3.5" />
+              <span>Switch Event / Club</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -129,24 +247,37 @@ function DedicatedEventPage() {
       <main className="flex-1 py-8 sm:py-10">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
           <div className="rounded-3xl bg-white p-6 sm:p-8 md:p-10 border border-slate-200 shadow-xl animate-in fade-in duration-200">
-            <ConductedEventsView
-              club={selectedClub}
-              forumName={forumName}
-              forumSlug={forumSlug}
-            />
+            {isAdmin && adminViewMode === "admin" ? (
+              /* For logged in Admin: Show Submissions, Report Downloads & Forum Excel */
+              <AdminEventsView
+                club={selectedClub}
+                forumName={forumName}
+                forumSlug={forumSlug}
+              />
+            ) : (
+              /* For public students or student preview mode: Conducted Events and Add Event */
+              <ConductedEventsView
+                club={selectedClub}
+                forumName={forumName}
+                forumSlug={forumSlug}
+              />
+            )}
           </div>
         </div>
       </main>
 
-      {/* Slide-out Drawer for Quick Switching */}
+      {/* Slide-out Drawer for Navigation */}
       <EventsClubsDrawer
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         onSelectForum={handleSelectForum}
         onOpenSubmitModal={handleSelectForum}
         onSelectDashboard={() => {
-          navigate({ to: "/" });
+          navigate({ to: isAdmin ? "/admin" : "/" });
         }}
+        isAdmin={isAdmin}
+        adminProfile={adminProfile}
+        onExportMasterExcel={handleExportMasterExcel}
         recentEvents={recentEvents}
       />
 

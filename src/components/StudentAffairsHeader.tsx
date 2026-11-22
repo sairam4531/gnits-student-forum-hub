@@ -4,7 +4,7 @@ import { GnitsCollegeLogo } from "@/components/GnitsCollegeLogo";
 
 interface StudentAffairsHeaderProps {
   onOpenDrawer: () => void;
-  title?: string;
+  title?: string | undefined;
 }
 
 interface ScrollingItem {
