@@ -23,5 +23,11 @@
       "binding": "KV",
       "id": "354e86ab39ec47c7b5f4578b4a79ce6a"
     }
-  ]
+  ],
+  "vars": {
+    "SUPABASE_URL": "https://c--197868ac-f234-477e-bb70-9ad9eff96614-prod.lovable.cloud",
+    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_ZHHX8iAzpgsynmvP16wbQw_nUEmRiHH",
+    "SUPABASE_SERVICE_ROLE_KEY": "sb_publishable_ZHHX8iAzpgsynmvP16wbQw_nUEmRiHH",
+    "ADMIN_SESSION_SECRET": "gnits-student-council-secure-key-2026"
+  }
 }

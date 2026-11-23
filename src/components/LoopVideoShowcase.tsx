@@ -17,8 +17,6 @@ interface LoopVideoShowcaseProps {
   onScrollToDean?: () => void;
 }
 
-const OFFICIAL_CAMPUS_VIDEO = "/assets/campus_loop_video.mp4";
-
 export function LoopVideoShowcase({
   video,
   onScrollToDean,
@@ -28,31 +26,25 @@ export function LoopVideoShowcase({
 
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [useFallback, setUseFallback] = useState(false);
   const [playbackFailed, setPlaybackFailed] = useState(false);
 
-  // Authoritative server-provided video URL
-  const serverVideoUrl = video && video.is_active && video.video_url?.trim() ? video.video_url.trim() : null;
+  // Authoritative server-provided video URL (only active when admin has added a video)
+  const serverVideoUrl =
+    video && video.is_active && video.video_url?.trim() && !video.video_url.includes("ForBiggerBlazes")
+      ? video.video_url.trim()
+      : null;
 
-  // Primary stream is server-featured video, official fallback is the campus loop asset
-  const activeVideoUrl = useFallback || !serverVideoUrl ? OFFICIAL_CAMPUS_VIDEO : serverVideoUrl;
+  // Active video URL is strictly the user/admin added video. No default background video is forced.
+  const activeVideoUrl = serverVideoUrl;
 
-  // Reset fallback if server video prop updates
+  // Reset error state if video prop updates
   useEffect(() => {
-    setUseFallback(false);
     setPlaybackFailed(false);
   }, [video?.id, video?.video_url]);
 
   const handleVideoError = () => {
-    // If the server-featured video failed and we haven't tried the official campus video, switch to it
-    if (!useFallback && serverVideoUrl !== OFFICIAL_CAMPUS_VIDEO) {
-      console.warn("Server video failed to load, switching to official campus loop asset.");
-      setUseFallback(true);
-    } else {
-      // If the official campus asset also failed, stop retrying to avoid infinite reload loops
-      console.warn("Campus loop video playback unavailable.");
-      setPlaybackFailed(true);
-    }
+    console.warn("Campus video stream unavailable.");
+    setPlaybackFailed(true);
   };
 
   // Watch for native fullscreen changes
@@ -144,16 +136,16 @@ export function LoopVideoShowcase({
       ref={containerRef}
       className="relative w-full h-[calc(100vh-4.5rem)] sm:h-[calc(100vh-5rem)] min-h-[520px] max-h-[960px] bg-black overflow-hidden flex items-center justify-center select-none"
     >
-      {playbackFailed ? (
-        // Graceful fallback poster display if both server and local video streams fail
+      {playbackFailed || !activeVideoUrl ? (
+        // Clean campus showcase banner when no video is active or video fails
         <div className="relative w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white p-6 text-center">
           <img
             src="/assets/student-affairs-reference.jpg"
             alt="GNITS Campus"
-            className="absolute inset-0 w-full h-full object-cover opacity-40 blur-xs"
+            className="absolute inset-0 w-full h-full object-cover opacity-35 blur-xs"
           />
           <div className="relative z-10 max-w-md bg-black/60 backdrop-blur-md p-6 rounded-2xl border border-white/20 shadow-2xl">
-            <VideoIcon className="h-12 w-12 text-blue-400 mx-auto mb-3 animate-pulse" />
+            <VideoIcon className="h-12 w-12 text-blue-400 mx-auto mb-3" />
             <h3 className="text-lg font-bold">GNITS Campus Video Showcase</h3>
             <p className="text-xs text-slate-300 mt-1">
               {video?.title || "Welcome to Dean Student Affairs Portal"}
@@ -161,7 +153,7 @@ export function LoopVideoShowcase({
           </div>
         </div>
       ) : (
-        /* Endless Auto-Loop Video (No stop, no pause, sound enabled, authoritative server sync) */
+        /* Endless Auto-Loop Video (Active only when user adds a video) */
         <video
           ref={videoRef}
           src={activeVideoUrl}
@@ -176,8 +168,8 @@ export function LoopVideoShowcase({
         />
       )}
 
-      {/* Floating Sound & Fullscreen Controls in bottom-right corner */}
-      {!playbackFailed && (
+      {/* Floating Sound & Fullscreen Controls in bottom-right corner - only when active video is playing */}
+      {!playbackFailed && Boolean(activeVideoUrl) && (
         <div className="absolute bottom-4 sm:bottom-6 right-4 sm:right-6 z-30 flex items-center gap-2.5">
           {/* Sound Toggle Button */}
           <button

@@ -110,21 +110,7 @@ const DEFAULT_HOMEPAGE_DATA: HomepageDataStore = {
       updated_at: "2026-11-17T11:00:00.000Z",
     },
   ],
-  videos: [
-    {
-      id: "video-1",
-      title: "GNITS Campus Tour & Student Affairs Highlights",
-      description:
-        "G. Narayanamma Institute of Technology & Science - Empowering women engineers through technical excellence, leadership, and vibrant student forum activities.",
-      video_url: "/assets/campus_loop_video.mp4",
-      thumbnail_url: "/assets/student-affairs-reference.jpg",
-      is_active: true,
-      is_featured: true,
-      display_order: 1,
-      created_at: "2026-11-20T10:00:00.000Z",
-      updated_at: "2026-11-20T10:00:00.000Z",
-    },
-  ],
+  videos: [],
   dean: {
     id: "dean-1",
     name: "Dr. Aparna Patle",

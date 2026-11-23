@@ -6,7 +6,13 @@ import crypto from "node:crypto";
 import type { Database } from "@/integrations/supabase/types";
 import { eventSubmissionSchema } from "@/lib/event-validation";
 import { isKnownForum } from "@/lib/event-validation";
-import { getLocalEvents, saveLocalEvent, saveFileLocally } from "@/lib/local-events-store";
+import {
+  getLocalEvents,
+  saveLocalEvent,
+  saveFileLocally,
+  getEventsStoreAsync,
+  saveEventsStoreAsync,
+} from "@/lib/local-events-store";
 import type { AdminEventRecord } from "@/lib/admin.functions";
 
 const publicForumInput = z.object({
@@ -80,8 +86,8 @@ export const getAllPublicEventsServerFn = createServerFn({ method: "GET" }).hand
       }
     }
 
-    // 2. Fallback: Include bundled default events if not yet seeded into Supabase
-    const all = getLocalEvents();
+    // 2. Fallback / Shared KV store: Include events from Cloudflare KV & local store
+    const all = await getEventsStoreAsync();
     for (const e of all) {
       if (!seenIds.has(e.id)) {
         seenIds.add(e.id);
@@ -137,8 +143,8 @@ export const getPublicForumEvents = createServerFn({ method: "GET" })
       }
     }
 
-    // 2. Fallback: Bundled local events if not yet present in Supabase
-    const allLocal = getLocalEvents();
+    // 2. Shared KV store & local events
+    const allLocal = await getEventsStoreAsync();
     const localMatches = allLocal
       .filter((e) => e.club_slug === data.clubSlug && e.forum_slug === data.forumSlug)
       .map((e) => ({
@@ -213,7 +219,7 @@ export const submitStudentEvent = createServerFn({ method: "POST" })
       console.warn("Supabase credentials not configured in current environment, using local store.");
     }
 
-    // 3. Keep local fallback store in sync
+    // 3. Central Cloudflare KV + Local persistence
     const eventRecord: AdminEventRecord = {
       id: eventId,
       club_slug: data.clubSlug,
@@ -235,7 +241,14 @@ export const submitStudentEvent = createServerFn({ method: "POST" })
       photo_download_urls: data.photoObjectPaths.map((p) => `/${p}`),
     };
 
-    saveLocalEvent(eventRecord);
+    const currentEvents = await getEventsStoreAsync();
+    const existingIndex = currentEvents.findIndex((e) => e.id === eventId);
+    if (existingIndex >= 0) {
+      currentEvents[existingIndex] = eventRecord;
+    } else {
+      currentEvents.unshift(eventRecord);
+    }
+    await saveEventsStoreAsync(currentEvents);
 
     return { id: eventId, success: true };
   });

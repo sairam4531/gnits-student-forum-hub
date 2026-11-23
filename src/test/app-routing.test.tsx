@@ -129,7 +129,6 @@ describe("App routing", () => {
     expect(Array.isArray(store.photos)).toBe(true);
     expect(store.photos.length).toBeGreaterThan(0);
     expect(Array.isArray(store.videos)).toBe(true);
-    expect(store.videos.length).toBeGreaterThan(0);
     expect(store.dean).toBeDefined();
     expect(store.dean.name).toContain("Dr.");
     expect(store.dean.email).toContain("@gnits.ac.in");

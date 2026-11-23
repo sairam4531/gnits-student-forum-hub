@@ -76,20 +76,7 @@ const DEFAULT_CLIENT_DATA: ClientHomepageData = {
       updated_at: new Date().toISOString(),
     },
   ],
-  videos: [
-    {
-      id: "video-1",
-      title: "GNITS Campus Tour & Student Affairs Highlights",
-      description: "Empowering women engineers through technical excellence, leadership, and vibrant student forum activities.",
-      video_url: "/assets/campus_loop_video.mp4",
-      thumbnail_url: "/assets/student-affairs-reference.jpg",
-      is_active: true,
-      is_featured: true,
-      display_order: 1,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-  ],
+  videos: [],
   dean: {
     id: "dean-1",
     name: "Dr. Aparna Patle",
@@ -150,12 +137,11 @@ function saveDeletedTracker(tracker: DeletedTracker): void {
 export function sanitizeVideoRecord(v: HomepageVideo): HomepageVideo {
   const isInvalidUrl =
     !v.video_url ||
-    v.video_url.includes("ForBiggerBlazes") ||
-    v.video_url.startsWith("blob:");
+    v.video_url.includes("ForBiggerBlazes");
 
   return {
     ...v,
-    video_url: isInvalidUrl ? "/assets/campus_loop_video.mp4" : v.video_url,
+    video_url: isInvalidUrl ? "" : v.video_url,
     thumbnail_url: v.thumbnail_url || "/assets/student-affairs-reference.jpg",
   };
 }
@@ -490,46 +476,21 @@ export function mergeServerWithClient(serverData: HomepageDataStore): ClientHome
     updated_at: sDean?.updated_at || cDean?.updated_at || new Date().toISOString(),
   });
 
-  // 2. Videos: Server videos are authoritative when available from server/KV across all browsers
-  const mergedVideosMap = new Map<string, HomepageVideo>();
+  // 2. Videos: Server videos are authoritative across all browsers
+  let finalVideos: HomepageVideo[] = [];
+  if (Array.isArray(serverData.videos)) {
+    finalVideos = serverData.videos
+      .filter((sv) => !tracker.videoIds.includes(sv.id) && sv.video_url && !sv.video_url.includes("ForBiggerBlazes"))
+      .map(sanitizeVideoRecord);
+  }
 
-  if (serverData.videos && serverData.videos.length > 0) {
-    // Authoritative server-provided videos and ordering
-    serverData.videos.forEach((sv) => {
-      if (!tracker.videoIds.includes(sv.id)) {
-        mergedVideosMap.set(sv.id, sanitizeVideoRecord(sv));
-      }
-    });
+  // 3. Photos: Server photos are authoritative across all browsers
+  let finalPhotos: HomepagePhoto[] = [];
+  if (Array.isArray(serverData.photos) && serverData.photos.length > 0) {
+    finalPhotos = serverData.photos.filter((sp) => !tracker.photoIds.includes(sp.id));
   } else {
-    // Fall back to client storage only if server returned no videos
-    (clientData.videos || []).forEach((cv) => {
-      if (!tracker.videoIds.includes(cv.id)) {
-        mergedVideosMap.set(cv.id, sanitizeVideoRecord(cv));
-      }
-    });
+    finalPhotos = (clientData.photos || []).filter((cp) => !tracker.photoIds.includes(cp.id));
   }
-
-  let finalVideos = Array.from(mergedVideosMap.values()).map(sanitizeVideoRecord);
-  if (finalVideos.length === 0) {
-    finalVideos = DEFAULT_CLIENT_DATA.videos.map(sanitizeVideoRecord);
-  }
-
-  // 3. Photos: Merge without resurrecting deleted items
-  const mergedPhotosMap = new Map<string, HomepagePhoto>();
-
-  (serverData.photos || []).forEach((sp) => {
-    if (!tracker.photoIds.includes(sp.id)) {
-      mergedPhotosMap.set(sp.id, sp);
-    }
-  });
-
-  (clientData.photos || []).forEach((cp) => {
-    if (!tracker.photoIds.includes(cp.id)) {
-      mergedPhotosMap.set(cp.id, cp);
-    }
-  });
-
-  let finalPhotos = Array.from(mergedPhotosMap.values());
   if (finalPhotos.length === 0) {
     finalPhotos = DEFAULT_CLIENT_DATA.photos;
   }

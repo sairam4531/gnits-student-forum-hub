@@ -599,71 +599,7 @@ function AdminPage() {
             />
           </section>
 
-          {/* 2. Admin Quick Control Bar right below video */}
-          <div className="border-y border-slate-200/80 bg-slate-50/90 py-3 px-4 sm:px-6 lg:px-8">
-            <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 text-xs">
-              <div className="flex items-center gap-2 text-slate-700 font-bold">
-                <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Dean Student Affairs Admin Control Dashboard</span>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    document.getElementById("admin-dean-profile-section")?.scrollIntoView({ behavior: "smooth" });
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-800 font-bold shadow-2xs transition-colors cursor-pointer"
-                >
-                  <User className="h-3.5 w-3.5 text-[#2563eb]" />
-                  <span>Dean's Profile</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    document.getElementById("admin-submitted-events-section")?.scrollIntoView({ behavior: "smooth" });
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold shadow-2xs transition-colors cursor-pointer"
-                >
-                  <FileSpreadsheet className="h-3.5 w-3.5 text-blue-600" />
-                  <span>Submitted Records ({allSubmittedEvents.length})</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setIsVideosModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-800 font-bold shadow-2xs transition-colors cursor-pointer"
-                  title="Upload or configure campus highlight videos"
-                >
-                  <VideoIcon className="h-3.5 w-3.5 text-orange-600" />
-                  <span>College Video Management</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setIsPhotosModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-800 font-bold shadow-2xs transition-colors cursor-pointer"
-                  title="Manage daily carousel photos"
-                >
-                  <ImageIcon className="h-3.5 w-3.5 text-orange-600" />
-                  <span>Daily Photos Management</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleExportMasterExcel}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-xs transition-colors cursor-pointer"
-                  title="Export all submitted records into Excel"
-                >
-                  <FileSpreadsheet className="h-3.5 w-3.5" />
-                  <span>Export Master Excel</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* 3. Dean Profile Editor directly below the video */}
+          {/* 3. Dean Profile Editor */}
           <section
             id="admin-dean-profile-section"
             aria-label="Dean's Profile Editor"
@@ -700,10 +636,28 @@ function AdminPage() {
                     </p>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-2.5">
                     <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-extrabold border border-blue-200">
                       {allSubmittedEvents.length} Total Records
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsVideosModalOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+                      title="Upload or configure campus highlight videos"
+                    >
+                      <VideoIcon className="h-3.5 w-3.5 text-blue-600" />
+                      <span>Manage Videos</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsPhotosModalOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold shadow-2xs transition-colors cursor-pointer"
+                      title="Manage daily carousel photos"
+                    >
+                      <ImageIcon className="h-3.5 w-3.5 text-blue-600" />
+                      <span>Manage Photos</span>
+                    </button>
                     <button
                       type="button"
                       onClick={handleExportMasterExcel}

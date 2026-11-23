@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import type { AdminEventRecord } from "@/lib/admin.functions";
+import { getCloudflareKVNamespace } from "@/lib/local-homepage-store";
 
 const LOCAL_DATA_DIR = path.resolve(process.cwd(), "data");
 const LOCAL_EVENTS_FILE = path.join(LOCAL_DATA_DIR, "events.json");
@@ -115,5 +116,50 @@ export function saveFileLocally(relativePath: string, base64Data: string): strin
     return `/${cleanPath}`;
   } catch {
     return base64Data;
+  }
+}
+
+export async function getEventsStoreAsync(): Promise<AdminEventRecord[]> {
+  try {
+    const cfKv = getCloudflareKVNamespace();
+    if (cfKv && typeof cfKv.get === "function") {
+      const kvData = await cfKv.get<AdminEventRecord[]>("events_store", "json");
+      if (Array.isArray(kvData)) {
+        globalThis.__gnitsEventsStore = kvData;
+        return kvData;
+      }
+    }
+  } catch (err) {
+    console.warn("Could not read events store from Cloudflare KV:", err);
+  }
+
+  return getLocalEvents();
+}
+
+export async function saveEventsStoreAsync(events: AdminEventRecord[]): Promise<void> {
+  globalThis.__gnitsEventsStore = events;
+
+  // 1. Write to local /tmp and data/ for dev fallback
+  try {
+    if (!fs.existsSync(TMP_DATA_DIR)) {
+      fs.mkdirSync(TMP_DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(TMP_EVENTS_FILE, JSON.stringify(events, null, 2), "utf-8");
+  } catch {}
+  try {
+    if (!fs.existsSync(LOCAL_DATA_DIR)) {
+      fs.mkdirSync(LOCAL_DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(LOCAL_EVENTS_FILE, JSON.stringify(events, null, 2), "utf-8");
+  } catch {}
+
+  // 2. Persist to Cloudflare KV for cross-browser synchronization
+  try {
+    const cfKv = getCloudflareKVNamespace();
+    if (cfKv && typeof cfKv.put === "function") {
+      await cfKv.put("events_store", JSON.stringify(events));
+    }
+  } catch (err) {
+    console.warn("Could not persist events to Cloudflare KV:", err);
   }
 }

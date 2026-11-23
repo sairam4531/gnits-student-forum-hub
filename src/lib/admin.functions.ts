@@ -5,7 +5,12 @@ import { z } from "zod";
 
 import type { Database } from "@/integrations/supabase/types";
 import { isKnownForum } from "@/lib/event-validation";
-import { getLocalEvents, deleteLocalEvent } from "@/lib/local-events-store";
+import {
+  getLocalEvents,
+  deleteLocalEvent,
+  getEventsStoreAsync,
+  saveEventsStoreAsync,
+} from "@/lib/local-events-store";
 
 const SESSION_COOKIE_NAME = "gnits_admin_session";
 const SESSION_SECRET =
@@ -234,8 +239,8 @@ export const getAdminForumEventsServerFn = createServerFn({ method: "GET" })
       throw new Error("Invalid club or forum selected.");
     }
 
-    // 1. Load local events
-    const allLocal = getLocalEvents();
+    // 1. Load events from shared Cloudflare KV & local store
+    const allLocal = await getEventsStoreAsync();
     const records: AdminEventRecord[] = allLocal
       .filter((e) => e.club_slug === data.clubSlug && e.forum_slug === data.forumSlug)
       .map((ev) => ({
@@ -294,7 +299,7 @@ export const getAllAdminEventsServerFn = createServerFn({ method: "GET" }).handl
   const session = verifySession(token);
   if (!session) throw new Error("Unauthorized. Admin access required.");
 
-  const allRecords: AdminEventRecord[] = [...getLocalEvents()];
+  const allRecords: AdminEventRecord[] = [...(await getEventsStoreAsync())];
 
   try {
     if (process.env["SUPABASE_SERVICE_ROLE_KEY"]) {
@@ -329,6 +334,8 @@ export const deleteAdminEventServerFn = createServerFn({ method: "POST" })
     if (!session) throw new Error("Unauthorized. Admin access required.");
 
     deleteLocalEvent(data.id);
+    const remaining = (await getEventsStoreAsync()).filter((e) => e.id !== data.id);
+    await saveEventsStoreAsync(remaining);
 
     try {
       if (process.env["SUPABASE_SERVICE_ROLE_KEY"]) {

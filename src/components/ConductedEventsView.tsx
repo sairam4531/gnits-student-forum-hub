@@ -102,37 +102,16 @@ export function ConductedEventsView({
         },
       });
 
-      // Combine with local client events so submitted events are never lost
-      const clientEvs = getClientEvents().filter(
-        (e) => e.club_slug === club.slug && e.forum_slug === forumSlug
-      );
-
-      const allMerged = [...(data as PublicEvent[]), ...(clientEvs as PublicEvent[])];
-      const map = new Map<string, PublicEvent>();
-      const signatureMap = new Map<string, string>(); // signature -> id
-
-      allMerged.forEach((e) => {
-        // Unique signature: club + forum + event_name + event_start + event_end
-        const sig = `${e.club_slug}::${e.forum_slug}::${e.event_name.trim().toLowerCase()}::${e.event_start}::${e.event_end}`;
-
-        if (map.has(e.id)) {
-          map.set(e.id, e);
-        } else if (signatureMap.has(sig)) {
-          const existingId = signatureMap.get(sig)!;
-          const existing = map.get(existingId);
-          // Preserve newer or complete record
-          if (existing && e.created_at > existing.created_at) {
-            map.delete(existingId);
-            map.set(e.id, e);
-            signatureMap.set(sig, e.id);
-          }
-        } else {
-          map.set(e.id, e);
-          signatureMap.set(sig, e.id);
-        }
-      });
-
-      setEvents(Array.from(map.values()));
+      if (Array.isArray(data)) {
+        setEvents(data as PublicEvent[]);
+        // Keep local client cache synchronized with authoritative server data
+        data.forEach((e) => saveClientEvent(e as PublicEventRecord));
+      } else {
+        const clientEvs = getClientEvents().filter(
+          (e) => e.club_slug === club.slug && e.forum_slug === forumSlug
+        );
+        setEvents(clientEvs as PublicEvent[]);
+      }
     } catch (err: unknown) {
       console.warn("Could not load public events:", err);
       const clientEvs = getClientEvents().filter(
