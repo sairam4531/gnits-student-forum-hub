@@ -112,64 +112,18 @@ function AdminPage() {
   };
 
   const loadAllEvents = useCallback(async () => {
-    let serverEvents: AdminEventRecord[] = [];
     try {
-      serverEvents = (await getAllAdminEventsServerFn()) || [];
+      const serverEvents = (await getAllAdminEventsServerFn()) || [];
+      const list = [...serverEvents].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+      setAllSubmittedEvents(list);
     } catch (err) {
-      console.warn("Could not load server events, using client store:", err);
+      console.warn("Could not load server events:", err);
+      // Fallback only if offline/network error
+      const clientAdminEvents = getClientAdminEvents();
+      setAllSubmittedEvents(clientAdminEvents);
     }
-
-    const clientAdminEvents = getClientAdminEvents();
-    const clientPublicEvents = getClientEvents();
-
-    const map = new Map<string, AdminEventRecord>();
-    serverEvents.forEach((ev) => map.set(ev.id, ev));
-    clientAdminEvents.forEach((ev) => map.set(ev.id, ev));
-    clientPublicEvents.forEach((pub) => {
-      if (!map.has(pub.id)) {
-        map.set(pub.id, {
-          id: pub.id,
-          club_slug: pub.club_slug,
-          forum_slug: pub.forum_slug,
-          event_name: pub.event_name,
-          event_start: pub.event_start,
-          event_end: pub.event_end,
-          resource_persons: pub.resource_persons || "Not specified",
-          submitter_name: (pub as any).submitter_name || "Student Submitter",
-          submitter_email: (pub as any).submitter_email || "student@gnits.ac.in",
-          report_object_path: (pub as any).report_object_path || "",
-          report_file_name: (pub as any).report_file_name || "Event_Report.pdf",
-          report_content_type: (pub as any).report_content_type || "application/pdf",
-          photo_object_paths: (pub as any).photo_object_paths || [],
-          photo_file_names: (pub as any).photo_file_names || [],
-          photo_download_urls: (pub as any).photo_download_urls || [],
-          created_at: pub.created_at || new Date().toISOString(),
-        });
-      }
-    });
-
-    // Deduplicate: Primary by ID, secondary by signature (same club + forum + name + dates + submitter)
-    const deduplicatedEvents: AdminEventRecord[] = [];
-    const seenSignatures = new Map<string, number>();
-
-    Array.from(map.values()).forEach((ev) => {
-      const sig = `${ev.club_slug}::${ev.forum_slug}::${ev.event_name.trim().toLowerCase()}::${ev.event_start}::${ev.event_end}::${(ev.submitter_email || "").trim().toLowerCase()}`;
-      if (seenSignatures.has(sig)) {
-        const existingIdx = seenSignatures.get(sig)!;
-        const existing = deduplicatedEvents[existingIdx];
-        if (existing && ev.created_at > existing.created_at) {
-          deduplicatedEvents[existingIdx] = ev;
-        }
-      } else {
-        seenSignatures.set(sig, deduplicatedEvents.length);
-        deduplicatedEvents.push(ev);
-      }
-    });
-
-    const list = deduplicatedEvents.sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-    setAllSubmittedEvents(list);
   }, []);
 
   // Check initial session & hydrate records

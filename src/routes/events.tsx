@@ -119,42 +119,7 @@ function DedicatedEventPage() {
 
   const handleExportMasterExcel = async () => {
     try {
-      let serverEvents: AdminEventRecord[] = [];
-      try {
-        serverEvents = (await getAllAdminEventsServerFn()) || [];
-      } catch (err) {
-        console.warn("Could not load server events for excel:", err);
-      }
-
-      const clientAdminEvents = getClientAdminEvents();
-      const clientPublicEvents = getClientEvents();
-
-      const map = new Map<string, AdminEventRecord>();
-      serverEvents.forEach((ev) => map.set(ev.id, ev));
-      clientAdminEvents.forEach((ev) => map.set(ev.id, ev));
-      clientPublicEvents.forEach((pub) => {
-        if (!map.has(pub.id)) {
-          map.set(pub.id, {
-            id: pub.id,
-            club_slug: pub.club_slug,
-            forum_slug: pub.forum_slug,
-            event_name: pub.event_name,
-            event_start: pub.event_start,
-            event_end: pub.event_end,
-            resource_persons: pub.resource_persons || "Not specified",
-            submitter_name: (pub as any).submitter_name || "Student Submitter",
-            submitter_email: (pub as any).submitter_email || "student@gnits.ac.in",
-            report_object_path: (pub as any).report_object_path || "",
-            report_file_name: (pub as any).report_file_name || "Event_Report.pdf",
-            report_content_type: (pub as any).report_content_type || "application/pdf",
-            photo_object_paths: (pub as any).photo_object_paths || [],
-            photo_file_names: (pub as any).photo_file_names || [],
-            created_at: pub.created_at || new Date().toISOString(),
-          });
-        }
-      });
-
-      const allEvents = Array.from(map.values());
+      const allEvents = (await getAllAdminEventsServerFn()) || [];
       if (allEvents.length === 0) {
         alert("No submitted events available for export.");
         return;
@@ -246,6 +211,7 @@ function DedicatedEventPage() {
               club={selectedClub}
               forumName={forumName}
               forumSlug={forumSlug}
+              isAdmin={isAdmin}
             />
           </div>
         </div>

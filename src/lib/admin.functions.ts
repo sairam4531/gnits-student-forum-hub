@@ -12,7 +12,7 @@ import {
   saveEventsStoreAsync,
 } from "@/lib/local-events-store";
 
-const SESSION_COOKIE_NAME = "gnits_admin_session";
+export const SESSION_COOKIE_NAME = "gnits_admin_session";
 const SESSION_SECRET =
   process.env["ADMIN_SESSION_SECRET"] || "gnits-student-council-secure-session-key-2026";
 const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -21,12 +21,12 @@ const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const ADMIN_USERNAME = "studentcouncil";
 const ADMIN_PASSWORD = "studentcouncil@1234";
 
-interface SessionPayload {
+export interface SessionPayload {
   username: string;
   exp: number;
 }
 
-function signSession(username: string): string {
+export function signSession(username: string): string {
   const payload: SessionPayload = {
     username,
     exp: Date.now() + SESSION_DURATION_MS,
@@ -36,7 +36,7 @@ function signSession(username: string): string {
   return `${data}.${signature}`;
 }
 
-function verifySession(token: string | undefined): SessionPayload | null {
+export function verifySession(token: string | undefined): SessionPayload | null {
   if (!token) return null;
   const parts = token.split(".");
   if (parts.length !== 2) return null;
@@ -239,16 +239,10 @@ export const getAdminForumEventsServerFn = createServerFn({ method: "GET" })
       throw new Error("Invalid club or forum selected.");
     }
 
-    // 1. Load events from shared Cloudflare KV & local store
-    const allLocal = await getEventsStoreAsync();
-    const records: AdminEventRecord[] = allLocal
-      .filter((e) => e.club_slug === data.clubSlug && e.forum_slug === data.forumSlug)
-      .map((ev) => ({
-        ...ev,
-        report_download_url: ev.report_download_url || `/${ev.report_object_path}`,
-        photo_download_urls: ev.photo_download_urls || ev.photo_object_paths.map((p) => `/${p}`),
-      }));
+    const records: AdminEventRecord[] = [];
+    const seenIds = new Set<string>();
 
+    // 1. Primary: Fetch authoritative records from Supabase
     try {
       if (process.env["SUPABASE_SERVICE_ROLE_KEY"]) {
         const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -260,33 +254,44 @@ export const getAdminForumEventsServerFn = createServerFn({ method: "GET" })
           .order("event_start", { ascending: false });
 
         if (!error && events) {
-          const seenIds = new Set(records.map((r) => r.id));
           for (const ev of events as AdminEventRecord[]) {
-            if (!seenIds.has(ev.id)) {
-              if (ev.report_object_path) {
-                const { data: reportUrl } = await supabaseAdmin.storage
-                  .from("student-forum-files")
-                  .createSignedUrl(ev.report_object_path, 3600);
-                ev.report_download_url = reportUrl?.signedUrl || `/${ev.report_object_path}`;
-              }
-              if (ev.photo_object_paths && ev.photo_object_paths.length > 0) {
-                const photoUrls: string[] = [];
-                for (const p of ev.photo_object_paths) {
-                  const { data: pUrl } = await supabaseAdmin.storage
-                    .from("student-forum-files")
-                    .createSignedUrl(p, 3600);
-                  if (pUrl?.signedUrl) photoUrls.push(pUrl.signedUrl);
-                }
-                ev.photo_download_urls =
-                  photoUrls.length > 0 ? photoUrls : ev.photo_object_paths.map((p) => `/${p}`);
-              }
-              records.push(ev);
+            seenIds.add(ev.id);
+            if (ev.report_object_path) {
+              const { data: reportUrl } = await supabaseAdmin.storage
+                .from("student-forum-files")
+                .createSignedUrl(ev.report_object_path, 3600);
+              ev.report_download_url = reportUrl?.signedUrl || `/${ev.report_object_path}`;
             }
+            if (ev.photo_object_paths && ev.photo_object_paths.length > 0) {
+              const photoUrls: string[] = [];
+              for (const p of ev.photo_object_paths) {
+                const { data: pUrl } = await supabaseAdmin.storage
+                  .from("student-forum-files")
+                  .createSignedUrl(p, 3600);
+                if (pUrl?.signedUrl) photoUrls.push(pUrl.signedUrl);
+              }
+              ev.photo_download_urls =
+                photoUrls.length > 0 ? photoUrls : ev.photo_object_paths.map((p) => `/${p}`);
+            }
+            records.push(ev);
           }
         }
       }
     } catch (err) {
-      console.warn("Supabase admin events query note (using local records):", err);
+      console.warn("Supabase admin events query note:", err);
+    }
+
+    // 2. Secondary fallback / bundled events (e.g. if Supabase is cold)
+    const allLocal = await getEventsStoreAsync();
+    for (const ev of allLocal) {
+      if (ev.club_slug === data.clubSlug && ev.forum_slug === data.forumSlug && !seenIds.has(ev.id)) {
+        seenIds.add(ev.id);
+        records.push({
+          ...ev,
+          report_download_url: ev.report_download_url || `/${ev.report_object_path}`,
+          photo_download_urls: ev.photo_download_urls || ev.photo_object_paths.map((p) => `/${p}`),
+        });
+      }
     }
 
     records.sort((a, b) => (b.event_start > a.event_start ? 1 : -1));
@@ -299,8 +304,10 @@ export const getAllAdminEventsServerFn = createServerFn({ method: "GET" }).handl
   const session = verifySession(token);
   if (!session) throw new Error("Unauthorized. Admin access required.");
 
-  const allRecords: AdminEventRecord[] = [...(await getEventsStoreAsync())];
+  const allRecords: AdminEventRecord[] = [];
+  const seenIds = new Set<string>();
 
+  // 1. Primary: Load all authoritative records from Supabase
   try {
     if (process.env["SUPABASE_SERVICE_ROLE_KEY"]) {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -310,16 +317,23 @@ export const getAllAdminEventsServerFn = createServerFn({ method: "GET" }).handl
         .order("created_at", { ascending: false });
 
       if (!error && events) {
-        const seenIds = new Set(allRecords.map((r) => r.id));
         for (const ev of events as AdminEventRecord[]) {
-          if (!seenIds.has(ev.id)) {
-            allRecords.push(ev);
-          }
+          seenIds.add(ev.id);
+          allRecords.push(ev);
         }
       }
     }
   } catch (err) {
     console.warn("Supabase all events query fallback:", err);
+  }
+
+  // 2. Secondary fallback / bundled events
+  const allLocal = await getEventsStoreAsync();
+  for (const ev of allLocal) {
+    if (!seenIds.has(ev.id)) {
+      seenIds.add(ev.id);
+      allRecords.push(ev);
+    }
   }
 
   return allRecords;

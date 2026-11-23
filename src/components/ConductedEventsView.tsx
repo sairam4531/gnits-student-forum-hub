@@ -32,6 +32,7 @@ interface ConductedEventsViewProps {
   forumName: string;
   forumSlug: string;
   onClose?: () => void;
+  isAdmin?: boolean;
 }
 
 interface PublicEvent {
@@ -59,6 +60,7 @@ export function ConductedEventsView({
   forumName,
   forumSlug,
   onClose,
+  isAdmin = false,
 }: ConductedEventsViewProps) {
   const [events, setEvents] = useState<PublicEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,7 +92,7 @@ export function ConductedEventsView({
   const [reportFile, setReportFile] = useState<File | null>(null);
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
 
-  // Fetch conducted events for this forum
+  // Fetch conducted events for this forum from authoritative server
   const fetchEvents = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -104,56 +106,9 @@ export function ConductedEventsView({
 
       if (Array.isArray(data)) {
         setEvents(data as PublicEvent[]);
-        // Keep local client cache synchronized with authoritative server data
         data.forEach((e) => saveClientEvent(e as PublicEventRecord));
-
-        // Auto-sync any client submissions that exist only in this browser's local store
-        try {
-          const clientAdminEvents = getClientAdminEvents();
-          const serverIds = new Set((data as PublicEvent[]).map((d) => d.id));
-          const unpersisted = clientAdminEvents.filter(
-            (ca) => ca.club_slug === club.slug && ca.forum_slug === forumSlug && !serverIds.has(ca.id)
-          );
-          if (unpersisted.length > 0) {
-            for (const unsynced of unpersisted) {
-              await submitStudentEvent({
-                data: {
-                  id: unsynced.id,
-                  clubSlug: unsynced.club_slug,
-                  forumSlug: unsynced.forum_slug,
-                  eventName: unsynced.event_name,
-                  eventStart: unsynced.event_start,
-                  eventEnd: unsynced.event_end,
-                  resourcePersons: unsynced.resource_persons || "Coordinator",
-                  submitterName: unsynced.submitter_name || "Coordinator",
-                  submitterEmail: unsynced.submitter_email || "admin@gnits.ac.in",
-                  reportObjectPath: unsynced.report_object_path || "",
-                  reportFileName: unsynced.report_file_name || "Event_Report.pdf",
-                  reportContentType: unsynced.report_content_type || "application/pdf",
-                  photoObjectPaths: unsynced.photo_object_paths || [],
-                  photoFileNames: unsynced.photo_file_names || [],
-                },
-              });
-            }
-            const refreshed = await getPublicForumEvents({
-              data: {
-                clubSlug: club.slug,
-                forumSlug: forumSlug,
-              },
-            });
-            if (Array.isArray(refreshed)) {
-              setEvents(refreshed as PublicEvent[]);
-              refreshed.forEach((e) => saveClientEvent(e as PublicEventRecord));
-            }
-          }
-        } catch {
-          // background sync note
-        }
       } else {
-        const clientEvs = getClientEvents().filter(
-          (e) => e.club_slug === club.slug && e.forum_slug === forumSlug
-        );
-        setEvents(clientEvs as PublicEvent[]);
+        setEvents([]);
       }
     } catch (err: unknown) {
       console.warn("Could not load public events:", err);
@@ -356,92 +311,35 @@ export function ConductedEventsView({
         finalPhotoUrls = safePhotoBase64s || [];
       }
 
-      // 3. Call server function with resilient error handling & automatic fallback
-      try {
-        await submitStudentEvent({
-          data: {
-            id: submissionId,
-            clubSlug: club.slug,
-            forumSlug: forumSlug,
-            eventName: eventName.trim(),
-            eventStart,
-            eventEnd,
-            resourcePersons: resourcePersons.trim(),
-            submitterName: submitterName.trim(),
-            submitterEmail: submitterEmail.trim().toLowerCase(),
-            reportObjectPath: finalReportPath,
-            reportFileName: finalReportName,
-            reportContentType: finalReportType,
-            photoObjectPaths: finalPhotoPaths,
-            photoFileNames: finalPhotoNames,
-            reportBase64: safeReportBase64,
-            photoBase64s: safePhotoBase64s,
-          },
-        });
-      } catch (firstErr) {
-        console.warn("Full payload submission note, retrying with pure metadata:", firstErr);
-        try {
-          await submitStudentEvent({
-            data: {
-              id: submissionId,
-              clubSlug: club.slug,
-              forumSlug: forumSlug,
-              eventName: eventName.trim(),
-              eventStart,
-              eventEnd,
-              resourcePersons: resourcePersons.trim(),
-              submitterName: submitterName.trim(),
-              submitterEmail: submitterEmail.trim().toLowerCase(),
-              reportObjectPath: finalReportPath,
-              reportFileName: finalReportName,
-              reportContentType: finalReportType,
-              photoObjectPaths: finalPhotoPaths,
-              photoFileNames: finalPhotoNames,
-            },
-          });
-        } catch (retryErr) {
-          console.warn("Server function rejected, safely persisting to local client store:", retryErr);
-        }
+      // 3. Commit to authoritative server database
+      const res = await submitStudentEvent({
+        data: {
+          id: submissionId,
+          clubSlug: club.slug,
+          forumSlug: forumSlug,
+          eventName: eventName.trim(),
+          eventStart,
+          eventEnd,
+          resourcePersons: resourcePersons.trim(),
+          submitterName: submitterName.trim(),
+          submitterEmail: submitterEmail.trim().toLowerCase(),
+          reportObjectPath: finalReportPath,
+          reportFileName: finalReportName,
+          reportContentType: finalReportType,
+          photoObjectPaths: finalPhotoPaths,
+          photoFileNames: finalPhotoNames,
+          reportBase64: safeReportBase64,
+          photoBase64s: safePhotoBase64s,
+        },
+      });
+
+      if (!res?.success) {
+        throw new Error("Server could not commit event to the authoritative database.");
       }
 
-      // 4. Save/Update client public persistent store
-      const clientEventRecord: PublicEventRecord = {
-        id: submissionId,
-        club_slug: club.slug,
-        forum_slug: forumSlug,
-        event_name: eventName.trim(),
-        event_start: eventStart,
-        event_end: eventEnd,
-        created_at: existingCreatedAt || new Date().toISOString(),
-        resource_persons: resourcePersons.trim(),
-      };
-      saveClientEvent(clientEventRecord);
-
-      // 5. Save/Update client admin metadata so it replaces the previous submission in place!
-      const clientAdminRecord: AdminEventRecord = {
-        id: submissionId,
-        club_slug: club.slug,
-        forum_slug: forumSlug,
-        event_name: eventName.trim(),
-        event_start: eventStart,
-        event_end: eventEnd,
-        resource_persons: resourcePersons.trim(),
-        submitter_name: submitterName.trim() || "Student Submitter",
-        submitter_email: submitterEmail.trim().toLowerCase() || "student@gnits.ac.in",
-        report_object_path: finalReportPath,
-        report_file_name: finalReportName,
-        report_content_type: finalReportType,
-        photo_object_paths: finalPhotoPaths,
-        photo_file_names: finalPhotoNames,
-        photo_download_urls: finalPhotoUrls,
-        created_at: existingCreatedAt || new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      saveClientAdminEvent(clientAdminRecord);
-
       setSubmitSuccess(true);
-      // Refresh public events list
-      fetchEvents();
+      // Refresh authoritative events list from server
+      await fetchEvents();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to submit event to Admin.";
       setSubmitError(msg);
@@ -558,16 +456,18 @@ export function ConductedEventsView({
                     </span>
                   </div>
 
-                  {/* Edit and Resubmit Button */}
-                  <button
-                    type="button"
-                    onClick={() => handleOpenEditModal(ev)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold border border-orange-200 transition-all hover:scale-102 cursor-pointer flex-shrink-0"
-                    title="Edit and resubmit updated details to Admin"
-                  >
-                    <Edit3 className="h-3.5 w-3.5" />
-                    <span>Edit</span>
-                  </button>
+                  {/* Edit and Resubmit Button - ONLY rendered for authenticated administrators */}
+                  {isAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditModal(ev)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold border border-orange-200 transition-all hover:scale-102 cursor-pointer flex-shrink-0"
+                      title="Edit and resubmit updated details as Administrator"
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                      <span>Edit</span>
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { createServerFn } from "@tanstack/react-start";
+import { getCookie } from "@tanstack/react-start/server";
 import { z } from "zod";
 import crypto from "node:crypto";
 
@@ -8,12 +9,15 @@ import { eventSubmissionSchema } from "@/lib/event-validation";
 import { isKnownForum } from "@/lib/event-validation";
 import {
   getLocalEvents,
-  saveLocalEvent,
   saveFileLocally,
   getEventsStoreAsync,
   saveEventsStoreAsync,
 } from "@/lib/local-events-store";
-import type { AdminEventRecord } from "@/lib/admin.functions";
+import {
+  type AdminEventRecord,
+  verifySession,
+  SESSION_COOKIE_NAME,
+} from "@/lib/admin.functions";
 
 const publicForumInput = z.object({
   clubSlug: z.string().min(1).max(80),
@@ -174,7 +178,39 @@ export const submitStudentEvent = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const eventId = data.id || crypto.randomUUID();
 
-    // 1. Save files locally if base64 provided and local filesystem available
+    // 1. Verify Supabase configuration
+    const supabaseUrl = process.env["SUPABASE_URL"];
+    if (!supabaseUrl) {
+      throw new Error("Database configuration error: Supabase URL is not configured on the server.");
+    }
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // 2. Authorization Enforcement:
+    // If updating an existing event, caller MUST be an authenticated administrator!
+    const { data: existingRow, error: checkError } = await supabaseAdmin
+      .from("student_forum_events")
+      .select("id")
+      .eq("id", eventId)
+      .maybeSingle();
+
+    if (checkError && checkError.code !== "PGRST116" && checkError.code !== "42501") {
+      console.warn("Supabase record check note:", checkError.message);
+    }
+
+    if (existingRow) {
+      // Event exists in database -> This is an update/edit.
+      // Strictly require authenticated administrator session cookie!
+      const token = getCookie(SESSION_COOKIE_NAME);
+      const session = verifySession(token);
+      if (!session) {
+        throw new Error(
+          "Unauthorized: Only authenticated Student Affairs administrators are authorized to edit existing conducted event records.",
+        );
+      }
+    }
+
+    // 3. Save files locally if base64 provided and local filesystem available
     if (data.reportBase64) {
       saveFileLocally(data.reportObjectPath, data.reportBase64);
     }
@@ -188,41 +224,33 @@ export const submitStudentEvent = createServerFn({ method: "POST" })
       }
     }
 
-    // 2. Primary: Persist to Supabase if accessible
-    const serviceKey = process.env["SUPABASE_SERVICE_ROLE_KEY"];
-    const supabaseUrl = process.env["SUPABASE_URL"];
+    // 4. Primary & Authoritative Database Commit:
+    // Upsert directly to Supabase and await database confirmation.
+    const { error: upsertError } = await supabaseAdmin.from("student_forum_events").upsert({
+      id: eventId,
+      club_slug: data.clubSlug,
+      forum_slug: data.forumSlug,
+      event_name: data.eventName,
+      event_start: data.eventStart,
+      event_end: data.eventEnd,
+      resource_persons: data.resourcePersons,
+      submitter_name: data.submitterName,
+      submitter_email: data.submitterEmail,
+      report_object_path: data.reportObjectPath,
+      report_file_name: data.reportFileName,
+      report_content_type: data.reportContentType,
+      photo_object_paths: data.photoObjectPaths,
+      photo_file_names: data.photoFileNames,
+    });
 
-    if (serviceKey && supabaseUrl) {
-      try {
-        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-        const { error: upsertError } = await supabaseAdmin.from("student_forum_events").upsert({
-          id: eventId,
-          club_slug: data.clubSlug,
-          forum_slug: data.forumSlug,
-          event_name: data.eventName,
-          event_start: data.eventStart,
-          event_end: data.eventEnd,
-          resource_persons: data.resourcePersons,
-          submitter_name: data.submitterName,
-          submitter_email: data.submitterEmail,
-          report_object_path: data.reportObjectPath,
-          report_file_name: data.reportFileName,
-          report_content_type: data.reportContentType,
-          photo_object_paths: data.photoObjectPaths,
-          photo_file_names: data.photoFileNames,
-        });
-
-        if (upsertError) {
-          console.warn("Supabase student event upsert note (persisting via Cloudflare KV):", upsertError.message);
-        }
-      } catch (dbErr) {
-        console.warn("Supabase database connection note (persisting via Cloudflare KV):", dbErr);
-      }
-    } else {
-      console.warn("Supabase credentials not configured in current environment, using Cloudflare KV store.");
+    if (upsertError) {
+      console.error("Supabase student event upsert failed:", upsertError);
+      throw new Error(
+        `Database commit failed: ${upsertError.message || upsertError.code || "Database error"}`,
+      );
     }
 
-    // 3. Central Cloudflare KV + Local persistence
+    // 5. Update Cloudflare KV / local cache ONLY AFTER confirmed database commit
     const eventRecord: AdminEventRecord = {
       id: eventId,
       club_slug: data.clubSlug,
@@ -239,19 +267,23 @@ export const submitStudentEvent = createServerFn({ method: "POST" })
       photo_object_paths: data.photoObjectPaths,
       photo_file_names: data.photoFileNames,
       created_at: new Date().toISOString(),
-      updated_at: data.id ? new Date().toISOString() : undefined,
+      updated_at: existingRow ? new Date().toISOString() : undefined,
       report_download_url: `/${data.reportObjectPath}`,
       photo_download_urls: data.photoObjectPaths.map((p) => `/${p}`),
     };
 
-    const currentEvents = await getEventsStoreAsync();
-    const existingIndex = currentEvents.findIndex((e) => e.id === eventId);
-    if (existingIndex >= 0) {
-      currentEvents[existingIndex] = eventRecord;
-    } else {
-      currentEvents.unshift(eventRecord);
+    try {
+      const currentEvents = await getEventsStoreAsync();
+      const existingIndex = currentEvents.findIndex((e) => e.id === eventId);
+      if (existingIndex >= 0) {
+        currentEvents[existingIndex] = eventRecord;
+      } else {
+        currentEvents.unshift(eventRecord);
+      }
+      await saveEventsStoreAsync(currentEvents);
+    } catch (kvErr) {
+      console.warn("KV cache update note (DB commit succeeded):", kvErr);
     }
-    await saveEventsStoreAsync(currentEvents);
 
     return { id: eventId, success: true };
   });
