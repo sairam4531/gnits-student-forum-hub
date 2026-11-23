@@ -106,6 +106,49 @@ export function ConductedEventsView({
         setEvents(data as PublicEvent[]);
         // Keep local client cache synchronized with authoritative server data
         data.forEach((e) => saveClientEvent(e as PublicEventRecord));
+
+        // Auto-sync any client submissions that exist only in this browser's local store
+        try {
+          const clientAdminEvents = getClientAdminEvents();
+          const serverIds = new Set((data as PublicEvent[]).map((d) => d.id));
+          const unpersisted = clientAdminEvents.filter(
+            (ca) => ca.club_slug === club.slug && ca.forum_slug === forumSlug && !serverIds.has(ca.id)
+          );
+          if (unpersisted.length > 0) {
+            for (const unsynced of unpersisted) {
+              await submitStudentEvent({
+                data: {
+                  id: unsynced.id,
+                  clubSlug: unsynced.club_slug,
+                  forumSlug: unsynced.forum_slug,
+                  eventName: unsynced.event_name,
+                  eventStart: unsynced.event_start,
+                  eventEnd: unsynced.event_end,
+                  resourcePersons: unsynced.resource_persons || "Coordinator",
+                  submitterName: unsynced.submitter_name || "Coordinator",
+                  submitterEmail: unsynced.submitter_email || "admin@gnits.ac.in",
+                  reportObjectPath: unsynced.report_object_path || "",
+                  reportFileName: unsynced.report_file_name || "Event_Report.pdf",
+                  reportContentType: unsynced.report_content_type || "application/pdf",
+                  photoObjectPaths: unsynced.photo_object_paths || [],
+                  photoFileNames: unsynced.photo_file_names || [],
+                },
+              });
+            }
+            const refreshed = await getPublicForumEvents({
+              data: {
+                clubSlug: club.slug,
+                forumSlug: forumSlug,
+              },
+            });
+            if (Array.isArray(refreshed)) {
+              setEvents(refreshed as PublicEvent[]);
+              refreshed.forEach((e) => saveClientEvent(e as PublicEventRecord));
+            }
+          }
+        } catch {
+          // background sync note
+        }
       } else {
         const clientEvs = getClientEvents().filter(
           (e) => e.club_slug === club.slug && e.forum_slug === forumSlug

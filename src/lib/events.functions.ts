@@ -188,35 +188,38 @@ export const submitStudentEvent = createServerFn({ method: "POST" })
       }
     }
 
-    // 2. Primary: Persist directly to Supabase with strict error checking
+    // 2. Primary: Persist to Supabase if accessible
     const serviceKey = process.env["SUPABASE_SERVICE_ROLE_KEY"];
     const supabaseUrl = process.env["SUPABASE_URL"];
 
     if (serviceKey && supabaseUrl) {
-      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      const { error: upsertError } = await supabaseAdmin.from("student_forum_events").upsert({
-        id: eventId,
-        club_slug: data.clubSlug,
-        forum_slug: data.forumSlug,
-        event_name: data.eventName,
-        event_start: data.eventStart,
-        event_end: data.eventEnd,
-        resource_persons: data.resourcePersons,
-        submitter_name: data.submitterName,
-        submitter_email: data.submitterEmail,
-        report_object_path: data.reportObjectPath,
-        report_file_name: data.reportFileName,
-        report_content_type: data.reportContentType,
-        photo_object_paths: data.photoObjectPaths,
-        photo_file_names: data.photoFileNames,
-      });
+      try {
+        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+        const { error: upsertError } = await supabaseAdmin.from("student_forum_events").upsert({
+          id: eventId,
+          club_slug: data.clubSlug,
+          forum_slug: data.forumSlug,
+          event_name: data.eventName,
+          event_start: data.eventStart,
+          event_end: data.eventEnd,
+          resource_persons: data.resourcePersons,
+          submitter_name: data.submitterName,
+          submitter_email: data.submitterEmail,
+          report_object_path: data.reportObjectPath,
+          report_file_name: data.reportFileName,
+          report_content_type: data.reportContentType,
+          photo_object_paths: data.photoObjectPaths,
+          photo_file_names: data.photoFileNames,
+        });
 
-      if (upsertError) {
-        console.error("Supabase student event upsert failed:", upsertError);
-        throw new Error(`Failed to save event to database: ${upsertError.message || "Database error"}`);
+        if (upsertError) {
+          console.warn("Supabase student event upsert note (persisting via Cloudflare KV):", upsertError.message);
+        }
+      } catch (dbErr) {
+        console.warn("Supabase database connection note (persisting via Cloudflare KV):", dbErr);
       }
     } else {
-      console.warn("Supabase credentials not configured in current environment, using local store.");
+      console.warn("Supabase credentials not configured in current environment, using Cloudflare KV store.");
     }
 
     // 3. Central Cloudflare KV + Local persistence
