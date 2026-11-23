@@ -13,30 +13,10 @@ import {
   type DeanDetails,
 } from "@/lib/local-homepage-store";
 
-const SESSION_COOKIE_NAME = "gnits_admin_session";
-const SESSION_SECRET =
-  process.env["ADMIN_SESSION_SECRET"] || "gnits-student-council-secure-session-key-2026";
+import { verifySession, SESSION_COOKIE_NAME } from "@/lib/admin.functions";
 
 function verifyAdminSession(token: string | undefined): boolean {
-  if (!token) return false;
-  const parts = token.split(".");
-  if (parts.length !== 2) return false;
-  const [data, sig] = parts;
-  if (!data || !sig) return false;
-
-  const expectedSig = crypto.createHmac("sha256", SESSION_SECRET).update(data).digest("base64url");
-  if (sig.length !== expectedSig.length) return false;
-  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) return false;
-
-  try {
-    const payload = JSON.parse(Buffer.from(data, "base64url").toString("utf-8")) as {
-      username: string;
-      exp: number;
-    };
-    return !payload.exp || Date.now() <= payload.exp;
-  } catch {
-    return false;
-  }
+  return Boolean(verifySession(token));
 }
 
 // -------------------------------------------------------------

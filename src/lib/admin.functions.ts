@@ -13,13 +13,29 @@ import {
 } from "@/lib/local-events-store";
 
 export const SESSION_COOKIE_NAME = "gnits_admin_session";
-const SESSION_SECRET =
-  process.env["ADMIN_SESSION_SECRET"] || "gnits-student-council-secure-session-key-2026";
 const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 // Temporary credentials as specified in requirements
 const ADMIN_USERNAME = "studentcouncil";
 const ADMIN_PASSWORD = "studentcouncil@1234";
+
+function getAdminSessionSecret(): string {
+  const g = globalThis as unknown as {
+    __env__?: { ADMIN_SESSION_SECRET?: string };
+    env?: { ADMIN_SESSION_SECRET?: string };
+  };
+  const secret =
+    (typeof process !== "undefined" && process.env?.["ADMIN_SESSION_SECRET"]) ||
+    g.__env__?.ADMIN_SESSION_SECRET ||
+    g.env?.ADMIN_SESSION_SECRET;
+
+  if (!secret) {
+    throw new Error(
+      "ADMIN_SESSION_SECRET is not configured on the server. Please set it as a Cloudflare Worker Secret.",
+    );
+  }
+  return secret;
+}
 
 export interface SessionPayload {
   username: string;
@@ -27,12 +43,13 @@ export interface SessionPayload {
 }
 
 export function signSession(username: string): string {
+  const secret = getAdminSessionSecret();
   const payload: SessionPayload = {
     username,
     exp: Date.now() + SESSION_DURATION_MS,
   };
   const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const signature = crypto.createHmac("sha256", SESSION_SECRET).update(data).digest("base64url");
+  const signature = crypto.createHmac("sha256", secret).update(data).digest("base64url");
   return `${data}.${signature}`;
 }
 
@@ -43,11 +60,12 @@ export function verifySession(token: string | undefined): SessionPayload | null 
   const [data, sig] = parts;
   if (!data || !sig) return null;
 
-  const expectedSig = crypto.createHmac("sha256", SESSION_SECRET).update(data).digest("base64url");
-  if (sig.length !== expectedSig.length) return null;
-  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) return null;
-
   try {
+    const secret = getAdminSessionSecret();
+    const expectedSig = crypto.createHmac("sha256", secret).update(data).digest("base64url");
+    if (sig.length !== expectedSig.length) return null;
+    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) return null;
+
     const payload = JSON.parse(Buffer.from(data, "base64url").toString("utf-8")) as SessionPayload;
     if (payload.exp && Date.now() > payload.exp) return null;
     return payload;
