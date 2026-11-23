@@ -1,7 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getCookie } from "@tanstack/react-start/server";
 import { z } from "zod";
-import crypto from "node:crypto";
 import {
   getHomepageStore,
   getHomepageStoreAsync,
@@ -15,8 +14,9 @@ import {
 
 import { verifySession, SESSION_COOKIE_NAME } from "@/lib/admin.functions";
 
-function verifyAdminSession(token: string | undefined): boolean {
-  return Boolean(verifySession(token));
+async function verifyAdminSession(token: string | undefined): Promise<boolean> {
+  const session = await verifySession(token);
+  return Boolean(session);
 }
 
 // -------------------------------------------------------------
@@ -64,7 +64,7 @@ export const getAllPublicPhotosServerFn = createServerFn({ method: "GET" }).hand
 export const getAdminHomepageDataServerFn = createServerFn({ method: "GET" }).handler(
   async () => {
     const sessionToken = getCookie(SESSION_COOKIE_NAME);
-    if (!verifyAdminSession(sessionToken)) {
+    if (!(await verifyAdminSession(sessionToken))) {
       throw new Error("Unauthorized administrator access.");
     }
     return await getHomepageStoreAsync();
@@ -89,7 +89,7 @@ export const savePhotoAdminServerFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => PhotoInputSchema.parse(d))
   .handler(async ({ data }) => {
     const sessionToken = getCookie(SESSION_COOKIE_NAME);
-    if (!verifyAdminSession(sessionToken)) {
+    if (!(await verifyAdminSession(sessionToken))) {
       throw new Error("Unauthorized administrator access.");
     }
 
@@ -146,7 +146,7 @@ export const deletePhotoAdminServerFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => z.object({ id: z.string() }).parse(d))
   .handler(async ({ data }) => {
     const sessionToken = getCookie(SESSION_COOKIE_NAME);
-    if (!verifyAdminSession(sessionToken)) {
+    if (!(await verifyAdminSession(sessionToken))) {
       throw new Error("Unauthorized administrator access.");
     }
 
@@ -169,7 +169,7 @@ export const togglePhotoStatusServerFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const sessionToken = getCookie(SESSION_COOKIE_NAME);
-    if (!verifyAdminSession(sessionToken)) {
+    if (!(await verifyAdminSession(sessionToken))) {
       throw new Error("Unauthorized administrator access.");
     }
 
@@ -203,7 +203,7 @@ export const saveVideoAdminServerFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => VideoInputSchema.parse(d))
   .handler(async ({ data }) => {
     const sessionToken = getCookie(SESSION_COOKIE_NAME);
-    if (!verifyAdminSession(sessionToken)) {
+    if (!(await verifyAdminSession(sessionToken))) {
       throw new Error("Unauthorized administrator access.");
     }
 
@@ -292,7 +292,7 @@ export const deleteVideoAdminServerFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => z.object({ id: z.string() }).parse(d))
   .handler(async ({ data }) => {
     const sessionToken = getCookie(SESSION_COOKIE_NAME);
-    if (!verifyAdminSession(sessionToken)) {
+    if (!(await verifyAdminSession(sessionToken))) {
       throw new Error("Unauthorized administrator access.");
     }
 
@@ -306,7 +306,7 @@ export const setFeaturedVideoAdminServerFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => z.object({ id: z.string() }).parse(d))
   .handler(async ({ data }) => {
     const sessionToken = getCookie(SESSION_COOKIE_NAME);
-    if (!verifyAdminSession(sessionToken)) {
+    if (!(await verifyAdminSession(sessionToken))) {
       throw new Error("Unauthorized administrator access.");
     }
 
@@ -334,7 +334,7 @@ export const updateDeanDetailsAdminServerFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => DeanDetailsSchema.parse(d))
   .handler(async ({ data }) => {
     const sessionToken = getCookie(SESSION_COOKIE_NAME);
-    if (!verifyAdminSession(sessionToken)) {
+    if (!(await verifyAdminSession(sessionToken))) {
       throw new Error("Unauthorized administrator access.");
     }
 

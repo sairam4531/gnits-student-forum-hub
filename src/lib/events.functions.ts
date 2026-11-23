@@ -2,7 +2,6 @@ import { createClient } from "@supabase/supabase-js";
 import { createServerFn } from "@tanstack/react-start";
 import { getCookie } from "@tanstack/react-start/server";
 import { z } from "zod";
-import crypto from "node:crypto";
 
 import type { Database } from "@/integrations/supabase/types";
 import { eventSubmissionSchema } from "@/lib/event-validation";
@@ -176,7 +175,7 @@ export const getPublicForumEvents = createServerFn({ method: "GET" })
 export const submitStudentEvent = createServerFn({ method: "POST" })
   .validator((input) => eventSubmissionSchema.parse(input))
   .handler(async ({ data }) => {
-    const eventId = data.id || crypto.randomUUID();
+    const eventId = data.id || globalThis.crypto.randomUUID();
 
     // 1. Verify Supabase configuration
     const supabaseUrl = process.env["SUPABASE_URL"];
@@ -202,7 +201,7 @@ export const submitStudentEvent = createServerFn({ method: "POST" })
       // Event exists in database -> This is an update/edit.
       // Strictly require authenticated administrator session cookie!
       const token = getCookie(SESSION_COOKIE_NAME);
-      const session = verifySession(token);
+      const session = await verifySession(token);
       if (!session) {
         throw new Error(
           "Unauthorized: Only authenticated Student Affairs administrators are authorized to edit existing conducted event records.",

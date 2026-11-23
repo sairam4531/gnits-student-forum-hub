@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { createServerFn } from "@tanstack/react-start";
 import { getCookie, setCookie, deleteCookie } from "@tanstack/react-start/server";
 import { z } from "zod";
@@ -11,67 +10,22 @@ import {
   getEventsStoreAsync,
   saveEventsStoreAsync,
 } from "@/lib/local-events-store";
+import {
+  SESSION_COOKIE_NAME,
+  SESSION_DURATION_MS,
+  type SessionPayload,
+} from "@/lib/admin-session.server";
 
-export const SESSION_COOKIE_NAME = "gnits_admin_session";
-const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+export { SESSION_COOKIE_NAME, SESSION_DURATION_MS, type SessionPayload };
 
-// Temporary credentials as specified in requirements
-const ADMIN_USERNAME = "studentcouncil";
-const ADMIN_PASSWORD = "studentcouncil@1234";
-
-function getAdminSessionSecret(): string {
-  const g = globalThis as unknown as {
-    __env__?: { ADMIN_SESSION_SECRET?: string };
-    env?: { ADMIN_SESSION_SECRET?: string };
-  };
-  const secret =
-    (typeof process !== "undefined" && process.env?.["ADMIN_SESSION_SECRET"]) ||
-    g.__env__?.ADMIN_SESSION_SECRET ||
-    g.env?.ADMIN_SESSION_SECRET;
-
-  if (!secret) {
-    throw new Error(
-      "ADMIN_SESSION_SECRET is not configured on the server. Please set it as a Cloudflare Worker Secret.",
-    );
-  }
-  return secret;
+export async function verifySession(token: string | undefined): Promise<SessionPayload | null> {
+  const { verifySession: serverVerify } = await import("@/lib/admin-session.server");
+  return serverVerify(token);
 }
 
-export interface SessionPayload {
-  username: string;
-  exp: number;
-}
-
-export function signSession(username: string): string {
-  const secret = getAdminSessionSecret();
-  const payload: SessionPayload = {
-    username,
-    exp: Date.now() + SESSION_DURATION_MS,
-  };
-  const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const signature = crypto.createHmac("sha256", secret).update(data).digest("base64url");
-  return `${data}.${signature}`;
-}
-
-export function verifySession(token: string | undefined): SessionPayload | null {
-  if (!token) return null;
-  const parts = token.split(".");
-  if (parts.length !== 2) return null;
-  const [data, sig] = parts;
-  if (!data || !sig) return null;
-
-  try {
-    const secret = getAdminSessionSecret();
-    const expectedSig = crypto.createHmac("sha256", secret).update(data).digest("base64url");
-    if (sig.length !== expectedSig.length) return null;
-    if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) return null;
-
-    const payload = JSON.parse(Buffer.from(data, "base64url").toString("utf-8")) as SessionPayload;
-    if (payload.exp && Date.now() > payload.exp) return null;
-    return payload;
-  } catch {
-    return null;
-  }
+export async function signSession(username: string): Promise<string> {
+  const { signSession: serverSign } = await import("@/lib/admin-session.server");
+  return serverSign(username);
 }
 
 export interface AdminEventRecord {
@@ -104,7 +58,7 @@ export interface AdminProfileRecord {
 
 // In-memory fallback stores for development or offline testing when Supabase is unreachable
 const memoryAdminProfile: AdminProfileRecord = {
-  username: ADMIN_USERNAME,
+  username: "studentcouncil",
   display_name: "GNITS Student Council Admin",
   avatar_url: null,
   updated_at: new Date().toISOString(),
@@ -123,12 +77,13 @@ export const adminLoginServerFn = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
+    const { ADMIN_USERNAME, ADMIN_PASSWORD } = await import("@/lib/admin-session.server");
     // Verify temporary administrator credentials only on server
     if (data.username !== ADMIN_USERNAME || data.password !== ADMIN_PASSWORD) {
       throw new Error("Invalid username or password. Please verify your credentials.");
     }
 
-    const token = signSession(ADMIN_USERNAME);
+    const token = await signSession(ADMIN_USERNAME);
     setCookie(SESSION_COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env["NODE_ENV"] === "production",
@@ -146,7 +101,7 @@ export const adminLoginServerFn = createServerFn({ method: "POST" })
 // 2. Check Admin Session Server Function
 export const getAdminSessionServerFn = createServerFn({ method: "GET" }).handler(async () => {
   const token = getCookie(SESSION_COOKIE_NAME);
-  const session = verifySession(token);
+  const session = await verifySession(token);
   return {
     authenticated: Boolean(session),
     username: session?.username ?? null,
@@ -164,7 +119,7 @@ export const adminLogoutServerFn = createServerFn({ method: "POST" }).handler(as
 // 4. Get Admin Profile Server Function
 export const getAdminProfileServerFn = createServerFn({ method: "GET" }).handler(async () => {
   const token = getCookie(SESSION_COOKIE_NAME);
-  const session = verifySession(token);
+  const session = await verifySession(token);
   if (!session) throw new Error("Unauthorized. Please log in.");
 
   try {
@@ -209,7 +164,7 @@ export const updateAdminProfileServerFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const token = getCookie(SESSION_COOKIE_NAME);
-    const session = verifySession(token);
+    const session = await verifySession(token);
     if (!session) throw new Error("Unauthorized. Please log in.");
 
     try {
@@ -250,7 +205,7 @@ export const getAdminForumEventsServerFn = createServerFn({ method: "GET" })
   )
   .handler(async ({ data }) => {
     const token = getCookie(SESSION_COOKIE_NAME);
-    const session = verifySession(token);
+    const session = await verifySession(token);
     if (!session) throw new Error("Unauthorized. Admin access required.");
 
     if (!isKnownForum(data.clubSlug, data.forumSlug)) {
@@ -319,7 +274,7 @@ export const getAdminForumEventsServerFn = createServerFn({ method: "GET" })
 // 7. Get All Admin Events (for cross-forum export)
 export const getAllAdminEventsServerFn = createServerFn({ method: "GET" }).handler(async () => {
   const token = getCookie(SESSION_COOKIE_NAME);
-  const session = verifySession(token);
+  const session = await verifySession(token);
   if (!session) throw new Error("Unauthorized. Admin access required.");
 
   const allRecords: AdminEventRecord[] = [];
@@ -362,7 +317,7 @@ export const deleteAdminEventServerFn = createServerFn({ method: "POST" })
   .validator((input: { id: string }) => input)
   .handler(async ({ data }) => {
     const token = getCookie(SESSION_COOKIE_NAME);
-    const session = verifySession(token);
+    const session = await verifySession(token);
     if (!session) throw new Error("Unauthorized. Admin access required.");
 
     deleteLocalEvent(data.id);
