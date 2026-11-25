@@ -21,10 +21,13 @@ import { type ForumClub } from "@/lib/student-forums";
 import {
   getClientEvents,
   saveClientEvent,
+  syncClientForumEvents,
   saveClientAdminEvent,
   getClientAdminEvents,
   getEventEditToken,
   saveEventEditToken,
+  EVENTS_KEY,
+  DELETED_IDS_KEY,
 } from "@/lib/client-portal-store";
 import { saveEventFile, compressImage } from "@/lib/event-file-storage";
 import { MAX_UPLOAD_BYTES } from "@/lib/event-validation";
@@ -123,7 +126,7 @@ export function ConductedEventsView({
 
         if (Array.isArray(data)) {
           setEvents(data as PublicEvent[]);
-          data.forEach((e) => saveClientEvent(e as PublicEventRecord, { broadcast: false }));
+          syncClientForumEvents(club.slug, forumSlug, data as PublicEventRecord[]);
         } else {
           setEvents([]);
         }
@@ -161,10 +164,7 @@ export function ConductedEventsView({
     }
 
     const handleStorage = (e: StorageEvent) => {
-      if (
-        e.key === "GNITS_EVENTS_PERSISTENT_DATA_V2" ||
-        e.key === "GNITS_DELETED_ITEMS_TRACKER_V2"
-      ) {
+      if (e.key === EVENTS_KEY || e.key === DELETED_IDS_KEY) {
         fetchEvents(true);
       }
     };

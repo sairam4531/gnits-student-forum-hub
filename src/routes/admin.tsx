@@ -34,10 +34,13 @@ import {
   mergeServerWithClient,
   getClientAdminEvents,
   getClientEvents,
+  HOMEPAGE_KEY,
+  DELETED_IDS_KEY,
 } from "@/lib/client-portal-store";
 import * as XLSX from "xlsx";
 
 export const Route = createFileRoute("/admin")({
+  staleTime: 0,
   component: AdminPage,
 });
 
@@ -78,17 +81,14 @@ function AdminPage() {
     }
   };
 
-  // Check initial session & hydrate homepage data
+  // Check initial session & hydrate authoritative homepage data from server
   useEffect(() => {
-    setHomepageData(getClientHomepageData());
-
     async function checkAuth() {
       try {
         const session = await getAdminSessionServerFn();
         if (session.authenticated) {
           setIsAuthenticated(true);
-          setCheckingSession(false);
-          // Fetch profile and latest homepage data concurrently without blocking initial dashboard video render
+          // Fetch profile and latest homepage data before rendering dashboard inputs
           await Promise.all([
             getAdminProfileServerFn()
               .then((profile) => setAdminProfile(profile))
@@ -119,10 +119,7 @@ function AdminPage() {
     }
 
     const handleStorage = (e: StorageEvent) => {
-      if (
-        e.key === "GNITS_HOMEPAGE_PERSISTENT_DATA_V2" ||
-        e.key === "GNITS_DELETED_ITEMS_TRACKER_V2"
-      ) {
+      if (e.key === HOMEPAGE_KEY || e.key === DELETED_IDS_KEY) {
         loadHomepageData();
       }
     };
@@ -392,12 +389,9 @@ function AdminPage() {
   }
 
   // Authenticated Admin Dashboard: ONLY Video Showcase (with Edit Video button) + Dean Details
-  const currentClientData = getClientHomepageData();
-  const currentDean = homepageData?.dean || currentClientData.dean;
-  const allVideosList =
-    homepageData?.videos?.length
-      ? homepageData.videos
-      : currentClientData.videos;
+  const resolvedData = homepageData ?? getClientHomepageData();
+  const currentDean = resolvedData.dean;
+  const allVideosList = resolvedData.videos;
   const activeFeaturedVideo =
     allVideosList.find((v) => v.is_featured && v.is_active) ||
     allVideosList[0] ||
@@ -464,7 +458,7 @@ function AdminPage() {
               <X className="h-5 w-5" />
             </button>
             <CollegeVideosManage
-              videos={homepageData?.videos || getClientHomepageData().videos}
+              videos={resolvedData.videos}
               onRefresh={loadHomepageData}
             />
           </div>

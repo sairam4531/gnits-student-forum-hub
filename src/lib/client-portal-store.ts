@@ -7,11 +7,11 @@ import type {
 import type { PublicEventRecord } from "@/lib/events.functions";
 import type { AdminEventRecord } from "@/lib/admin.functions";
 
-const HOMEPAGE_KEY = "GNITS_HOMEPAGE_PERSISTENT_DATA_V2";
-const EVENTS_KEY = "GNITS_EVENTS_PERSISTENT_DATA_V2";
-const ADMIN_EVENTS_KEY = "GNITS_ADMIN_EVENTS_PERSISTENT_DATA_V2";
+export const HOMEPAGE_KEY = "GNITS_HOMEPAGE_PERSISTENT_DATA_V3";
+export const EVENTS_KEY = "GNITS_EVENTS_PERSISTENT_DATA_V3";
+export const ADMIN_EVENTS_KEY = "GNITS_ADMIN_EVENTS_PERSISTENT_DATA_V3";
 const EVENT_EDIT_TOKENS_KEY = "GNITS_EVENT_EDIT_TOKENS_V1";
-const DELETED_IDS_KEY = "GNITS_DELETED_ITEMS_TRACKER_V2";
+export const DELETED_IDS_KEY = "GNITS_DELETED_ITEMS_TRACKER_V3";
 const SYNC_BROADCAST_CHANNEL = "gnits_portal_sync_channel";
 
 export interface DeletedTracker {
@@ -382,6 +382,31 @@ export function saveClientEvent(
   }
 }
 
+export function syncClientEvents(events: PublicEventRecord[]): void {
+  if (!isClient()) return;
+  try {
+    localStorage.setItem(EVENTS_KEY, JSON.stringify(events));
+  } catch {
+    // ignore
+  }
+}
+
+export function syncClientForumEvents(
+  clubSlug: string,
+  forumSlug: string,
+  forumEvents: PublicEventRecord[],
+): void {
+  if (!isClient()) return;
+  try {
+    const others = getClientEvents().filter(
+      (e) => !(e.club_slug === clubSlug && e.forum_slug === forumSlug),
+    );
+    localStorage.setItem(EVENTS_KEY, JSON.stringify([...forumEvents, ...others]));
+  } catch {
+    // ignore
+  }
+}
+
 export function getEventEditToken(eventId: string): string | undefined {
   if (!isClient()) return undefined;
   try {
@@ -491,63 +516,49 @@ export function deleteClientAdminEvent(eventId: string): void {
 // Guarantees: User uploaded/updated details are NEVER deleted unless explicitly deleted by user
 // -------------------------------------------------------------
 export function mergeServerWithClient(serverData: HomepageDataStore): ClientHomepageData {
-  const clientData = getClientHomepageData();
   const tracker = getDeletedTracker();
 
-  // 1. Dean Details: Server-provided Dean from KV is authoritative for the public homepage.
-  // Never allow empty strings from stale browser cache to wipe valid server fields.
+  // 1. Dean Details: Server-provided Dean is always authoritative across all browsers.
   const sDean = serverData.dean;
-  const cDean = clientData.dean;
-  const resolvedPhoto =
-    sDean?.profile_photo?.trim() ||
-    cDean?.profile_photo?.trim() ||
-    "";
-
-  let finalDean = sanitizeDeanRecord({
-    id: sDean?.id || cDean?.id || "dean-1",
-    name: sDean?.name?.trim() || cDean?.name?.trim() || DEFAULT_CLIENT_DATA.dean.name,
-    designation: sDean?.designation?.trim() || cDean?.designation?.trim() || DEFAULT_CLIENT_DATA.dean.designation,
-    profile_photo: resolvedPhoto,
-    email: sDean?.email?.trim() || cDean?.email?.trim() || DEFAULT_CLIENT_DATA.dean.email,
+  const finalDean = sanitizeDeanRecord({
+    id: sDean?.id || "dean-1",
+    name: sDean?.name?.trim() || DEFAULT_CLIENT_DATA.dean.name,
+    designation: sDean?.designation?.trim() || DEFAULT_CLIENT_DATA.dean.designation,
+    profile_photo: sDean?.profile_photo?.trim() || "",
+    email: sDean?.email?.trim() || DEFAULT_CLIENT_DATA.dean.email,
     contact_number:
       sDean?.contact_number?.trim() ||
       sDean?.office?.trim() ||
-      cDean?.contact_number?.trim() ||
-      cDean?.office?.trim() ||
       DEFAULT_CLIENT_DATA.dean.contact_number,
     office:
       sDean?.office?.trim() ||
       sDean?.contact_number?.trim() ||
-      cDean?.office?.trim() ||
-      cDean?.contact_number?.trim() ||
       DEFAULT_CLIENT_DATA.dean.office,
-    updated_at: sDean?.updated_at || cDean?.updated_at || new Date().toISOString(),
+    updated_at: sDean?.updated_at || new Date().toISOString(),
   });
 
-  // 2. Videos: Server videos are authoritative across all browsers
-  let finalVideos: HomepageVideo[] = [];
-  if (Array.isArray(serverData.videos)) {
-    finalVideos = serverData.videos
-      .filter((sv) => !tracker.videoIds.includes(sv.id) && sv.video_url && !sv.video_url.includes("ForBiggerBlazes"))
-      .map(sanitizeVideoRecord);
-  }
+  // 2. Videos: Authoritative server video list replaces any stale browser-local copy
+  const finalVideos: HomepageVideo[] = Array.isArray(serverData.videos)
+    ? serverData.videos
+        .filter((sv) => sv.video_url && !sv.video_url.includes("ForBiggerBlazes"))
+        .map(sanitizeVideoRecord)
+    : [];
 
   // 3. Photos: Server photos are authoritative across all browsers
-  let finalPhotos: HomepagePhoto[] = [];
-  if (Array.isArray(serverData.photos) && serverData.photos.length > 0) {
-    finalPhotos = serverData.photos.filter((sp) => !tracker.photoIds.includes(sp.id));
-  } else {
-    finalPhotos = (clientData.photos || []).filter((cp) => !tracker.photoIds.includes(cp.id));
-  }
-  if (finalPhotos.length === 0) {
-    finalPhotos = DEFAULT_CLIENT_DATA.photos;
+  const serverPhotos = Array.isArray(serverData.photos) ? serverData.photos : [];
+  const finalPhotos: HomepagePhoto[] =
+    serverPhotos.length > 0 ? serverPhotos : DEFAULT_CLIENT_DATA.photos;
+
+  // Clear old per-browser homepage deletion flags once authoritative server state loads
+  if (tracker.videoIds.length > 0 || tracker.photoIds.length > 0) {
+    saveDeletedTracker({ ...tracker, videoIds: [], photoIds: [] });
   }
 
   const result: ClientHomepageData = {
     dean: finalDean,
     videos: finalVideos,
     photos: finalPhotos,
-    isUserModified: clientData.isUserModified ?? false,
+    isUserModified: false,
     lastUpdated: Date.now(),
   };
 

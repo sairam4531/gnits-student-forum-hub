@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { User, Upload, Check, AlertCircle, Loader2, Sparkles, Mail, Building2 } from "lucide-react";
 import { updateDeanDetailsAdminServerFn } from "@/lib/homepage.functions";
 import type { DeanDetails } from "@/lib/local-homepage-store";
-import { saveClientDeanDetails, getClientHomepageData } from "@/lib/client-portal-store";
+import { saveClientDeanDetails } from "@/lib/client-portal-store";
 
 interface DeanDetailsManageProps {
   dean: DeanDetails;
@@ -10,34 +10,22 @@ interface DeanDetailsManageProps {
 }
 
 export function DeanDetailsManage({ dean, onRefresh }: DeanDetailsManageProps) {
-  const initialDean = getClientHomepageData().dean || dean;
-
-  const [name, setName] = useState(initialDean.name || dean.name);
-  const [designation, setDesignation] = useState(initialDean.designation || dean.designation);
-  const [email, setEmail] = useState(initialDean.email || dean.email);
+  const [name, setName] = useState(dean.name);
+  const [designation, setDesignation] = useState(dean.designation);
+  const [email, setEmail] = useState(dean.email);
   const [office, setOffice] = useState(
-    initialDean.office ||
-      initialDean.contact_number ||
-      dean.office ||
-      dean.contact_number ||
-      "Dean – Student Affairs, GNITS, Hyderabad"
+    dean.office || dean.contact_number || "Dean – Student Affairs, GNITS, Hyderabad",
   );
-  const [profilePhoto, setProfilePhoto] = useState(initialDean.profile_photo || dean.profile_photo || "");
+  const [profilePhoto, setProfilePhoto] = useState(dean.profile_photo || "");
 
   useEffect(() => {
-    const current = getClientHomepageData().dean;
-    const srcDean = current || dean;
-    if (srcDean) {
-      setName(srcDean.name || "");
-      setDesignation(srcDean.designation || "");
-      setEmail(srcDean.email || "");
-      setOffice(
-        srcDean.office ||
-        srcDean.contact_number ||
-        "Dean – Student Affairs, GNITS, Hyderabad"
-      );
-      setProfilePhoto(srcDean.profile_photo || "");
-    }
+    setName(dean.name || "");
+    setDesignation(dean.designation || "");
+    setEmail(dean.email || "");
+    setOffice(
+      dean.office || dean.contact_number || "Dean – Student Affairs, GNITS, Hyderabad",
+    );
+    setProfilePhoto(dean.profile_photo || "");
   }, [dean]);
 
   // Photo upload
@@ -103,7 +91,21 @@ export function DeanDetailsManage({ dean, onRefresh }: DeanDetailsManageProps) {
     setSaving(true);
 
     try {
-      const updatedDean: DeanDetails = {
+      // Save authoritatively on the server first so all browsers and deployments receive the update
+      const response = await updateDeanDetailsAdminServerFn({
+        data: {
+          name: name.trim(),
+          designation: designation.trim(),
+          email: email.trim(),
+          office: office.trim(),
+          contact_number: office.trim(),
+          profile_photo: profilePhoto || undefined,
+          photoBase64: photoBase64 || undefined,
+          photoFileName: photoFileName || undefined,
+        },
+      });
+
+      const updatedDean: DeanDetails = response?.dean || {
         id: dean.id || "dean-1",
         name: name.trim(),
         designation: designation.trim(),
@@ -114,27 +116,9 @@ export function DeanDetailsManage({ dean, onRefresh }: DeanDetailsManageProps) {
         updated_at: new Date().toISOString(),
       };
 
-      // 1. Instantly save to persistent client storage so it is NEVER lost on server reload
       saveClientDeanDetails(updatedDean);
-
-      // 2. Persist to server store with resilient fallback
-      try {
-        await updateDeanDetailsAdminServerFn({
-          data: {
-            name: name.trim(),
-            designation: designation.trim(),
-            email: email.trim(),
-            office: office.trim(),
-            contact_number: office.trim(),
-            profile_photo: profilePhoto || undefined,
-            photoBase64: photoBase64 || undefined,
-            photoFileName: photoFileName || undefined,
-          },
-        });
-      } catch (serverErr) {
-        console.warn("Server store update note (client storage persisted):", serverErr);
-      }
-
+      setPhotoBase64(null);
+      setPhotoFileName(null);
       await onRefresh();
       setSuccessMsg("Dean Details successfully updated and published to the homepage!");
       setTimeout(() => setSuccessMsg(null), 4000);

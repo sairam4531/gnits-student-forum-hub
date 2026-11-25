@@ -19,7 +19,7 @@ import {
   getClientHomepageData,
   mergeServerWithClient,
   getClientEvents,
-  saveClientEvent,
+  syncClientEvents,
 } from "@/lib/client-portal-store";
 
 export const Route = createFileRoute("/")({
@@ -30,7 +30,7 @@ export const Route = createFileRoute("/")({
       return null;
     }
   },
-  staleTime: 60_000,
+  staleTime: 0,
   component: StudentAffairsPortalPage,
 });
 
@@ -125,8 +125,8 @@ function StudentAffairsPortalPage() {
 
     async function loadData() {
       try {
-        const homeData = initialHomeData || (await getPublicHomepageDataServerFn());
-        if (homeData && !initialHomeData) {
+        const homeData = await getPublicHomepageDataServerFn();
+        if (homeData) {
           const merged = mergeServerWithClient({
             photos: homeData.photos || [],
             videos: homeData.allVideos || (homeData.featuredVideo ? [homeData.featuredVideo] : []),
@@ -150,16 +150,9 @@ function StudentAffairsPortalPage() {
         }
 
         const events = await getAllPublicEventsServerFn();
-        if (events && events.length > 0) {
-          const clientEvs = getClientEvents();
-          const combined = [...clientEvs];
-          for (const ev of events) {
-            if (!combined.some((c) => c.id === ev.id)) {
-              combined.push(ev);
-              saveClientEvent(ev, { broadcast: false });
-            }
-          }
-          setRecentEvents(combined);
+        if (Array.isArray(events)) {
+          syncClientEvents(events);
+          setRecentEvents(events);
         }
 
         if (!homeData?.photos?.length) {
@@ -202,7 +195,7 @@ function StudentAffairsPortalPage() {
       bc?.close();
       window.removeEventListener("storage", handleStorage);
     };
-  }, [refreshFromClientStore, dean]);
+  }, [refreshFromClientStore]);
 
   // When clicking any event (like ISTE), navigate to dedicated new page
   const handleSelectForum = (club: ForumClub, forumName: string, forumSlug: string) => {

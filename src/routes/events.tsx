@@ -20,7 +20,7 @@ import {
   type AdminProfileRecord,
   type AdminEventRecord,
 } from "@/lib/admin.functions";
-import { getClientEvents, saveClientEvent, getClientAdminEvents } from "@/lib/client-portal-store";
+import { getClientEvents, syncClientEvents } from "@/lib/client-portal-store";
 import * as XLSX from "xlsx";
 
 interface EventSearchState {
@@ -31,6 +31,7 @@ interface EventSearchState {
 }
 
 export const Route = createFileRoute("/events")({
+  staleTime: 0,
   validateSearch: (search: Record<string, unknown>): EventSearchState => {
     return {
       club: (search["club"] as string) || "technical-events",
@@ -103,18 +104,9 @@ function DedicatedEventPage() {
     async function loadRecentEvents() {
       try {
         const events = await getAllPublicEventsServerFn();
-        if (events && events.length > 0) {
-          const clientEvs = getClientEvents();
-          const combined = [...clientEvs];
-          for (const ev of events) {
-            if (!combined.some((c) => c.id === ev.id)) {
-              combined.push(ev);
-              saveClientEvent(ev, { broadcast: false });
-            }
-          }
-          setRecentEvents(combined);
-        } else {
-          setRecentEvents(getClientEvents());
+        if (Array.isArray(events)) {
+          syncClientEvents(events);
+          setRecentEvents(events);
         }
       } catch (err) {
         console.warn("Could not load events:", err);

@@ -245,4 +245,60 @@ describe("App routing", () => {
       else process.env["CLOUDFLARE_KV_NAMESPACE_ID"] = prevNamespace;
     }
   });
+
+  it("overrides stale browser localStorage Dean and video cache with authoritative server data", async () => {
+    const {
+      HOMEPAGE_KEY,
+      saveClientDeanDetails,
+      mergeServerWithClient,
+      getClientHomepageData,
+    } = await import("@/lib/client-portal-store");
+
+    localStorage.clear();
+    // Simulate a stale Edge browser cache holding an old Dean spelling
+    saveClientDeanDetails({
+      id: "dean-1",
+      name: "Dr. Aparna Palle",
+      designation: "Dean, Student Affairs & Professor",
+      profile_photo: "",
+      email: "aparna.palle@gnits.ac.in",
+      contact_number: "GNITS",
+      office: "GNITS",
+      updated_at: "2026-11-20T00:00:00.000Z",
+    });
+
+    const merged = mergeServerWithClient({
+      photos: [],
+      videos: [
+        {
+          id: "vid-server-1",
+          title: "Campus Walkthrough",
+          description: "",
+          video_url: "/api/campus-video?id=vid-server-1",
+          thumbnail_url: "/assets/student-affairs-reference.jpg",
+          is_active: true,
+          is_featured: true,
+          display_order: 1,
+          created_at: "2026-11-25T00:00:00.000Z",
+          updated_at: "2026-11-25T00:00:00.000Z",
+        },
+      ],
+      dean: {
+        id: "dean-1",
+        name: "Dr. Aparna Patle",
+        designation: "Dean, Student Affairs & Professor",
+        profile_photo: "",
+        email: "aparna.patle@gnits.ac.in",
+        contact_number: "Dean – Student Affairs, GNITS, Hyderabad",
+        office: "Dean – Student Affairs, GNITS, Hyderabad",
+        updated_at: "2026-11-25T10:00:00.000Z",
+      },
+    });
+
+    expect(merged.dean.name).toBe("Dr. Aparna Patle");
+    expect(merged.dean.email).toBe("aparna.patle@gnits.ac.in");
+    expect(merged.videos).toHaveLength(1);
+    expect(getClientHomepageData().dean.name).toBe("Dr. Aparna Patle");
+    expect(localStorage.getItem(HOMEPAGE_KEY)).toContain("Dr. Aparna Patle");
+  });
 });

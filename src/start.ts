@@ -37,6 +37,30 @@ const campusVideoMiddleware = createMiddleware().server(async ({ request, pathna
   return next();
 });
 
+const noCacheMiddleware = createMiddleware().server(async ({ pathname, next }) => {
+  const result = await next();
+  if (
+    pathname !== "/api/campus-video" &&
+    !pathname.startsWith("/assets/") &&
+    result?.response instanceof Response
+  ) {
+    const headers = new Headers(result.response.headers);
+    headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    headers.set("CDN-Cache-Control", "no-store");
+    headers.set("Vercel-CDN-Cache-Control", "no-store");
+    headers.set("Pragma", "no-cache");
+    return {
+      ...result,
+      response: new Response(result.response.body, {
+        status: result.response.status,
+        statusText: result.response.statusText,
+        headers,
+      }),
+    };
+  }
+  return result;
+});
+
 // requestMiddleware runs on every request; functionMiddleware only on server functions, where
 // client sendContext is unvalidated input. Append to these arrays, never replace them.
 // Enabling Lovable Cloud adds functionMiddleware: [attachSupabaseAuth], the bearer token that
@@ -45,5 +69,5 @@ const campusVideoMiddleware = createMiddleware().server(async ({ request, pathna
 // project did not intentionally replace it.
 export const startInstance = createStart(() => ({
   functionMiddleware: [attachSupabaseAuth],
-  requestMiddleware: [errorMiddleware, campusVideoMiddleware, csrfMiddleware],
+  requestMiddleware: [errorMiddleware, noCacheMiddleware, campusVideoMiddleware, csrfMiddleware],
 }));
