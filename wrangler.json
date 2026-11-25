@@ -1,0 +1,31 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "gnits-student-affairs",
+  "account_id": "f268748965c0561933f524c9983a8f01",
+  "main": ".output/server/index.mjs",
+  "compatibility_date": "2026-11-22",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".output/public"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "gnits-student-affairs-db",
+      "database_id": "ee7c3810-8fae-44a9-baa0-18c6da7f7442"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "KV",
+      "id": "354e86ab39ec47c7b5f4578b4a79ce6a"
+    }
+  ],
+  "vars": {
+    "SUPABASE_URL": "https://c--197868ac-f234-477e-bb70-9ad9eff96614-prod.lovable.cloud",
+    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_ZHHX8iAzpgsynmvP16wbQw_nUEmRiHH"
+  }
+}

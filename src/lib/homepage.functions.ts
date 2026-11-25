@@ -1,40 +1,22 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getCookie } from "@tanstack/react-start/server";
 import { z } from "zod";
-import crypto from "node:crypto";
 import {
   getHomepageStore,
+  getHomepageStoreAsync,
   saveHomepageStore,
+  saveHomepageStoreAsync,
   saveUploadedMedia,
   type HomepagePhoto,
   type HomepageVideo,
   type DeanDetails,
 } from "@/lib/local-homepage-store";
 
-const SESSION_COOKIE_NAME = "gnits_admin_session";
-const SESSION_SECRET =
-  process.env["ADMIN_SESSION_SECRET"] || "gnits-student-council-secure-session-key-2026";
+import { verifySession, SESSION_COOKIE_NAME } from "@/lib/admin.functions";
 
-function verifyAdminSession(token: string | undefined): boolean {
-  if (!token) return false;
-  const parts = token.split(".");
-  if (parts.length !== 2) return false;
-  const [data, sig] = parts;
-  if (!data || !sig) return false;
-
-  const expectedSig = crypto.createHmac("sha256", SESSION_SECRET).update(data).digest("base64url");
-  if (sig.length !== expectedSig.length) return false;
-  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) return false;
-
-  try {
-    const payload = JSON.parse(Buffer.from(data, "base64url").toString("utf-8")) as {
-      username: string;
-      exp: number;
-    };
-    return !payload.exp || Date.now() <= payload.exp;
-  } catch {
-    return false;
-  }
+async function verifyAdminSession(token: string | undefined): Promise<boolean> {
+  const session = await verifySession(token);
+  return Boolean(session);
 }
 
 // -------------------------------------------------------------
@@ -42,7 +24,7 @@ function verifyAdminSession(token: string | undefined): boolean {
 // -------------------------------------------------------------
 export const getPublicHomepageDataServerFn = createServerFn({ method: "GET" }).handler(
   async () => {
-    const store = getHomepageStore();
+    const store = await getHomepageStoreAsync();
     const activePhotos = store.photos.filter((p) => p.is_active);
     const featuredPhotos = activePhotos
       .filter((p) => p.is_featured)
@@ -69,7 +51,7 @@ export const getPublicHomepageDataServerFn = createServerFn({ method: "GET" }).h
 
 export const getAllPublicPhotosServerFn = createServerFn({ method: "GET" }).handler(
   async () => {
-    const store = getHomepageStore();
+    const store = await getHomepageStoreAsync();
     return store.photos
       .filter((p) => p.is_active)
       .sort((a, b) => a.display_order - b.display_order);
@@ -82,10 +64,10 @@ export const getAllPublicPhotosServerFn = createServerFn({ method: "GET" }).hand
 export const getAdminHomepageDataServerFn = createServerFn({ method: "GET" }).handler(
   async () => {
     const sessionToken = getCookie(SESSION_COOKIE_NAME);
-    if (!verifyAdminSession(sessionToken)) {
+    if (!(await verifyAdminSession(sessionToken))) {
       throw new Error("Unauthorized administrator access.");
     }
-    return getHomepageStore();
+    return await getHomepageStoreAsync();
   },
 );
 
@@ -107,11 +89,11 @@ export const savePhotoAdminServerFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => PhotoInputSchema.parse(d))
   .handler(async ({ data }) => {
     const sessionToken = getCookie(SESSION_COOKIE_NAME);
-    if (!verifyAdminSession(sessionToken)) {
+    if (!(await verifyAdminSession(sessionToken))) {
       throw new Error("Unauthorized administrator access.");
     }
 
-    const store = getHomepageStore();
+    const store = await getHomepageStoreAsync();
     let finalImageUrl = data.image_url || "";
 
     if (data.imageBase64 && data.imageFileName) {
@@ -156,7 +138,7 @@ export const savePhotoAdminServerFn = createServerFn({ method: "POST" })
       store.photos.unshift(newPhoto);
     }
 
-    saveHomepageStore(store);
+    await saveHomepageStoreAsync(store);
     return { success: true };
   });
 
@@ -164,13 +146,13 @@ export const deletePhotoAdminServerFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => z.object({ id: z.string() }).parse(d))
   .handler(async ({ data }) => {
     const sessionToken = getCookie(SESSION_COOKIE_NAME);
-    if (!verifyAdminSession(sessionToken)) {
+    if (!(await verifyAdminSession(sessionToken))) {
       throw new Error("Unauthorized administrator access.");
     }
 
-    const store = getHomepageStore();
+    const store = await getHomepageStoreAsync();
     store.photos = store.photos.filter((p) => p.id !== data.id);
-    saveHomepageStore(store);
+    await saveHomepageStoreAsync(store);
     return { success: true };
   });
 
@@ -187,16 +169,16 @@ export const togglePhotoStatusServerFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const sessionToken = getCookie(SESSION_COOKIE_NAME);
-    if (!verifyAdminSession(sessionToken)) {
+    if (!(await verifyAdminSession(sessionToken))) {
       throw new Error("Unauthorized administrator access.");
     }
 
-    const store = getHomepageStore();
+    const store = await getHomepageStoreAsync();
     const photo = store.photos.find((p) => p.id === data.id);
     if (photo) {
       photo[data.field] = data.value;
       photo.updated_at = new Date().toISOString();
-      saveHomepageStore(store);
+      await saveHomepageStoreAsync(store);
     }
     return { success: true };
   });
@@ -221,11 +203,11 @@ export const saveVideoAdminServerFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => VideoInputSchema.parse(d))
   .handler(async ({ data }) => {
     const sessionToken = getCookie(SESSION_COOKIE_NAME);
-    if (!verifyAdminSession(sessionToken)) {
+    if (!(await verifyAdminSession(sessionToken))) {
       throw new Error("Unauthorized administrator access.");
     }
 
-    const store = getHomepageStore();
+    const store = await getHomepageStoreAsync();
     let finalVideoUrl = data.video_url || "";
     let finalThumbnailUrl = data.thumbnail_url || "";
 
@@ -238,11 +220,7 @@ export const saveVideoAdminServerFn = createServerFn({ method: "POST" })
     }
 
     if (data.videoBase64 && data.videoFileName) {
-      try {
-        finalVideoUrl = saveUploadedMedia("videos", data.videoFileName, data.videoBase64);
-      } catch (err) {
-        console.warn("Could not save video to disk:", err);
-      }
+      finalVideoUrl = saveUploadedMedia("videos", data.videoFileName, data.videoBase64);
     }
 
     if (data.thumbnailBase64 && data.thumbnailFileName) {
@@ -257,8 +235,15 @@ export const saveVideoAdminServerFn = createServerFn({ method: "POST" })
       finalThumbnailUrl = "/assets/student-affairs-reference.jpg";
     }
 
-    if (!finalVideoUrl) {
-      finalVideoUrl = "/assets/campus_loop_video.mp4";
+    if (!finalVideoUrl && data.id) {
+      const existing = store.videos.find((v) => v.id === data.id);
+      if (existing?.video_url && existing.video_url !== "/assets/campus_loop_video.mp4") {
+        finalVideoUrl = existing.video_url;
+      }
+    }
+
+    if (!finalVideoUrl || finalVideoUrl === "/assets/campus_loop_video.mp4") {
+      throw new Error("Please upload a valid video file.");
     }
 
     const now = new Date().toISOString();
@@ -302,7 +287,7 @@ export const saveVideoAdminServerFn = createServerFn({ method: "POST" })
       store.videos.unshift(newVideo);
     }
 
-    saveHomepageStore(store);
+    await saveHomepageStoreAsync(store);
     return { success: true };
   });
 
@@ -310,13 +295,13 @@ export const deleteVideoAdminServerFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => z.object({ id: z.string() }).parse(d))
   .handler(async ({ data }) => {
     const sessionToken = getCookie(SESSION_COOKIE_NAME);
-    if (!verifyAdminSession(sessionToken)) {
+    if (!(await verifyAdminSession(sessionToken))) {
       throw new Error("Unauthorized administrator access.");
     }
 
-    const store = getHomepageStore();
+    const store = await getHomepageStoreAsync();
     store.videos = store.videos.filter((v) => v.id !== data.id);
-    saveHomepageStore(store);
+    await saveHomepageStoreAsync(store);
     return { success: true };
   });
 
@@ -324,15 +309,15 @@ export const setFeaturedVideoAdminServerFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => z.object({ id: z.string() }).parse(d))
   .handler(async ({ data }) => {
     const sessionToken = getCookie(SESSION_COOKIE_NAME);
-    if (!verifyAdminSession(sessionToken)) {
+    if (!(await verifyAdminSession(sessionToken))) {
       throw new Error("Unauthorized administrator access.");
     }
 
-    const store = getHomepageStore();
+    const store = await getHomepageStoreAsync();
     store.videos.forEach((v) => {
       v.is_featured = v.id === data.id;
     });
-    saveHomepageStore(store);
+    await saveHomepageStoreAsync(store);
     return { success: true };
   });
 
@@ -352,15 +337,17 @@ export const updateDeanDetailsAdminServerFn = createServerFn({ method: "POST" })
   .validator((d: unknown) => DeanDetailsSchema.parse(d))
   .handler(async ({ data }) => {
     const sessionToken = getCookie(SESSION_COOKIE_NAME);
-    if (!verifyAdminSession(sessionToken)) {
+    if (!(await verifyAdminSession(sessionToken))) {
       throw new Error("Unauthorized administrator access.");
     }
 
-    const store = getHomepageStore();
-    let finalPhotoUrl = data.profile_photo || store.dean.profile_photo || "";
+    const store = await getHomepageStoreAsync();
+    let finalPhotoUrl = (data.profile_photo || "").trim();
 
-    if (data.photoBase64 && data.photoFileName) {
-      finalPhotoUrl = saveUploadedMedia("dean", data.photoFileName, data.photoBase64);
+    if (data.photoBase64) {
+      finalPhotoUrl = saveUploadedMedia("dean", data.photoFileName || "dean_photo.jpg", data.photoBase64);
+    } else if (!finalPhotoUrl && store.dean.profile_photo) {
+      finalPhotoUrl = store.dean.profile_photo;
     }
 
     const officeValue =
@@ -381,6 +368,6 @@ export const updateDeanDetailsAdminServerFn = createServerFn({ method: "POST" })
       updated_at: new Date().toISOString(),
     };
 
-    saveHomepageStore(store);
+    await saveHomepageStoreAsync(store);
     return { success: true, dean: store.dean };
   });

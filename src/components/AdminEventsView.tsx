@@ -121,11 +121,28 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
         }
       });
 
-      const loadedEvents = Array.from(map.values());
-      setEvents(loadedEvents);
+      // Deduplicate: Primary by ID, secondary by exact signature fallback (prevents dual-cached submissions)
+      const finalEvents: AdminEventRecord[] = [];
+      const seenSignatures = new Map<string, number>();
+
+      Array.from(map.values()).forEach((ev) => {
+        const sig = `${ev.club_slug}::${ev.forum_slug}::${ev.event_name.trim().toLowerCase()}::${ev.event_start}::${ev.event_end}::${(ev.submitter_email || "").trim().toLowerCase()}`;
+        if (seenSignatures.has(sig)) {
+          const existingIdx = seenSignatures.get(sig)!;
+          const existing = finalEvents[existingIdx];
+          if (existing && ev.created_at > existing.created_at) {
+            finalEvents[existingIdx] = ev;
+          }
+        } else {
+          seenSignatures.set(sig, finalEvents.length);
+          finalEvents.push(ev);
+        }
+      });
+
+      setEvents(finalEvents);
 
       // Preload photos for each event
-      for (const ev of loadedEvents) {
+      for (const ev of finalEvents) {
         loadPhotosForEvent(ev);
       }
     } catch (err: unknown) {

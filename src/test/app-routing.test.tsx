@@ -9,7 +9,7 @@ import {
   isSubmissionPath,
   eventSubmissionSchema,
 } from "@/lib/event-validation";
-import { getLocalEvents, saveLocalEvent } from "@/lib/local-events-store";
+import { getLocalEvents, saveLocalEvent, deleteLocalEvent } from "@/lib/local-events-store";
 import { getHomepageStore } from "@/lib/local-homepage-store";
 
 describe("App routing", () => {
@@ -117,6 +117,9 @@ describe("App routing", () => {
     const found = events.find((e) => e.id === testId);
     expect(found).toBeDefined();
     expect(found?.event_name).toBe("Test Conducted Event on ISTE");
+
+    // Clean up test event immediately so data/events.json is never polluted
+    deleteLocalEvent(testId);
   });
 
   it("stores and provides dynamic homepage photos, video, and dean details", () => {
@@ -126,9 +129,30 @@ describe("App routing", () => {
     expect(Array.isArray(store.photos)).toBe(true);
     expect(store.photos.length).toBeGreaterThan(0);
     expect(Array.isArray(store.videos)).toBe(true);
-    expect(store.videos.length).toBeGreaterThan(0);
     expect(store.dean).toBeDefined();
     expect(store.dean.name).toContain("Dr.");
     expect(store.dean.email).toContain("@gnits.ac.in");
+  });
+
+  it("signs and verifies admin sessions using Web Crypto HMAC-SHA256", async () => {
+    process.env["ADMIN_SESSION_SECRET"] = "unit-test-admin-secret-key-12345";
+    const { signSession, verifySession } = await import("@/lib/admin-session.server");
+
+    const token = await signSession("studentcouncil");
+    expect(token).toBeDefined();
+    expect(token).toContain(".");
+
+    const verified = await verifySession(token);
+    expect(verified).not.toBeNull();
+    expect(verified?.username).toBe("studentcouncil");
+
+    // Tampered token test
+    const tampered = token.slice(0, -3) + "xyz";
+    const tamperedResult = await verifySession(tampered);
+    expect(tamperedResult).toBeNull();
+
+    // Invalid format test
+    expect(await verifySession("invalid-token-without-dot")).toBeNull();
+    expect(await verifySession(undefined)).toBeNull();
   });
 });

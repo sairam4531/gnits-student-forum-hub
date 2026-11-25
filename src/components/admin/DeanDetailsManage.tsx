@@ -57,9 +57,41 @@ export function DeanDetailsManage({ dean, onRefresh }: DeanDetailsManageProps) {
     setPhotoFileName(file.name);
     const reader = new FileReader();
     reader.onload = () => {
-      const b64 = reader.result as string;
-      setPhotoBase64(b64);
-      setProfilePhoto(b64);
+      const rawBase64 = reader.result as string;
+      // Optimize image via canvas to keep base64 compact (~50-80KB) for seamless KV persistence
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 600;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          const optimizedB64 = canvas.toDataURL("image/jpeg", 0.85);
+          setPhotoBase64(optimizedB64);
+          setProfilePhoto(optimizedB64);
+        } else {
+          setPhotoBase64(rawBase64);
+          setProfilePhoto(rawBase64);
+        }
+      };
+      img.onerror = () => {
+        setPhotoBase64(rawBase64);
+        setProfilePhoto(rawBase64);
+      };
+      img.src = rawBase64;
     };
     reader.readAsDataURL(file);
   };
@@ -115,14 +147,12 @@ export function DeanDetailsManage({ dean, onRefresh }: DeanDetailsManageProps) {
 
   return (
     <div className="space-y-6">
-      {/* Top Banner */}
-      <div className="pb-4 border-b border-slate-200">
-        <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-          Dean Details Management
+      {/* Centered Section Title matching Admin Dashboard */}
+      <div className="text-center mb-6">
+        <h2 className="text-2xl sm:text-3xl font-black text-[#0f2757] tracking-tight">
+          Dean Details
         </h2>
-        <p className="text-xs sm:text-sm text-slate-500">
-          Update the Dean's official name, academic designation, profile photo, and institutional office details displayed on the homepage.
-        </p>
+        <div className="w-14 h-1 bg-[#0f2757] mx-auto mt-2.5 rounded-full" />
       </div>
 
       {successMsg && (

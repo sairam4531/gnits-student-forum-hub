@@ -1,54 +1,31 @@
-import crypto from "node:crypto";
 import { createServerFn } from "@tanstack/react-start";
 import { getCookie, setCookie, deleteCookie } from "@tanstack/react-start/server";
 import { z } from "zod";
 
 import type { Database } from "@/integrations/supabase/types";
 import { isKnownForum } from "@/lib/event-validation";
-import { getLocalEvents, deleteLocalEvent } from "@/lib/local-events-store";
+import {
+  getLocalEvents,
+  deleteLocalEvent,
+  getEventsStoreAsync,
+  saveEventsStoreAsync,
+} from "@/lib/local-events-store";
+import {
+  SESSION_COOKIE_NAME,
+  SESSION_DURATION_MS,
+  type SessionPayload,
+} from "@/lib/admin-session.server";
 
-const SESSION_COOKIE_NAME = "gnits_admin_session";
-const SESSION_SECRET =
-  process.env["ADMIN_SESSION_SECRET"] || "gnits-student-council-secure-session-key-2026";
-const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+export { SESSION_COOKIE_NAME, SESSION_DURATION_MS, type SessionPayload };
 
-// Temporary credentials as specified in requirements
-const ADMIN_USERNAME = "studentcouncil";
-const ADMIN_PASSWORD = "studentcouncil@1234";
-
-interface SessionPayload {
-  username: string;
-  exp: number;
+export async function verifySession(token: string | undefined): Promise<SessionPayload | null> {
+  const { verifySession: serverVerify } = await import("@/lib/admin-session.server");
+  return serverVerify(token);
 }
 
-function signSession(username: string): string {
-  const payload: SessionPayload = {
-    username,
-    exp: Date.now() + SESSION_DURATION_MS,
-  };
-  const data = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  const signature = crypto.createHmac("sha256", SESSION_SECRET).update(data).digest("base64url");
-  return `${data}.${signature}`;
-}
-
-function verifySession(token: string | undefined): SessionPayload | null {
-  if (!token) return null;
-  const parts = token.split(".");
-  if (parts.length !== 2) return null;
-  const [data, sig] = parts;
-  if (!data || !sig) return null;
-
-  const expectedSig = crypto.createHmac("sha256", SESSION_SECRET).update(data).digest("base64url");
-  if (sig.length !== expectedSig.length) return null;
-  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) return null;
-
-  try {
-    const payload = JSON.parse(Buffer.from(data, "base64url").toString("utf-8")) as SessionPayload;
-    if (payload.exp && Date.now() > payload.exp) return null;
-    return payload;
-  } catch {
-    return null;
-  }
+export async function signSession(username: string): Promise<string> {
+  const { signSession: serverSign } = await import("@/lib/admin-session.server");
+  return serverSign(username);
 }
 
 export interface AdminEventRecord {
@@ -81,7 +58,7 @@ export interface AdminProfileRecord {
 
 // In-memory fallback stores for development or offline testing when Supabase is unreachable
 const memoryAdminProfile: AdminProfileRecord = {
-  username: ADMIN_USERNAME,
+  username: "studentcouncil",
   display_name: "GNITS Student Council Admin",
   avatar_url: null,
   updated_at: new Date().toISOString(),
@@ -100,12 +77,13 @@ export const adminLoginServerFn = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data }) => {
+    const { ADMIN_USERNAME, ADMIN_PASSWORD } = await import("@/lib/admin-session.server");
     // Verify temporary administrator credentials only on server
     if (data.username !== ADMIN_USERNAME || data.password !== ADMIN_PASSWORD) {
       throw new Error("Invalid username or password. Please verify your credentials.");
     }
 
-    const token = signSession(ADMIN_USERNAME);
+    const token = await signSession(ADMIN_USERNAME);
     setCookie(SESSION_COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env["NODE_ENV"] === "production",
@@ -123,7 +101,7 @@ export const adminLoginServerFn = createServerFn({ method: "POST" })
 // 2. Check Admin Session Server Function
 export const getAdminSessionServerFn = createServerFn({ method: "GET" }).handler(async () => {
   const token = getCookie(SESSION_COOKIE_NAME);
-  const session = verifySession(token);
+  const session = await verifySession(token);
   return {
     authenticated: Boolean(session),
     username: session?.username ?? null,
@@ -141,7 +119,7 @@ export const adminLogoutServerFn = createServerFn({ method: "POST" }).handler(as
 // 4. Get Admin Profile Server Function
 export const getAdminProfileServerFn = createServerFn({ method: "GET" }).handler(async () => {
   const token = getCookie(SESSION_COOKIE_NAME);
-  const session = verifySession(token);
+  const session = await verifySession(token);
   if (!session) throw new Error("Unauthorized. Please log in.");
 
   try {
@@ -186,7 +164,7 @@ export const updateAdminProfileServerFn = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const token = getCookie(SESSION_COOKIE_NAME);
-    const session = verifySession(token);
+    const session = await verifySession(token);
     if (!session) throw new Error("Unauthorized. Please log in.");
 
     try {
@@ -227,26 +205,22 @@ export const getAdminForumEventsServerFn = createServerFn({ method: "GET" })
   )
   .handler(async ({ data }) => {
     const token = getCookie(SESSION_COOKIE_NAME);
-    const session = verifySession(token);
+    const session = await verifySession(token);
     if (!session) throw new Error("Unauthorized. Admin access required.");
 
     if (!isKnownForum(data.clubSlug, data.forumSlug)) {
       throw new Error("Invalid club or forum selected.");
     }
 
-    // 1. Load local events
-    const allLocal = getLocalEvents();
-    const records: AdminEventRecord[] = allLocal
-      .filter((e) => e.club_slug === data.clubSlug && e.forum_slug === data.forumSlug)
-      .map((ev) => ({
-        ...ev,
-        report_download_url: ev.report_download_url || `/${ev.report_object_path}`,
-        photo_download_urls: ev.photo_download_urls || ev.photo_object_paths.map((p) => `/${p}`),
-      }));
+    const records: AdminEventRecord[] = [];
+    const seenIds = new Set<string>();
 
+    // 1. Primary: Fetch authoritative records from Supabase
     try {
-      if (process.env["SUPABASE_SERVICE_ROLE_KEY"]) {
-        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { supabaseAdmin, hasSupabaseAdminConfig } = await import(
+        "@/integrations/supabase/client.server"
+      );
+      if (hasSupabaseAdminConfig()) {
         const { data: events, error } = await supabaseAdmin
           .from("student_forum_events")
           .select("*")
@@ -255,33 +229,44 @@ export const getAdminForumEventsServerFn = createServerFn({ method: "GET" })
           .order("event_start", { ascending: false });
 
         if (!error && events) {
-          const seenIds = new Set(records.map((r) => r.id));
           for (const ev of events as AdminEventRecord[]) {
-            if (!seenIds.has(ev.id)) {
-              if (ev.report_object_path) {
-                const { data: reportUrl } = await supabaseAdmin.storage
-                  .from("student-forum-files")
-                  .createSignedUrl(ev.report_object_path, 3600);
-                ev.report_download_url = reportUrl?.signedUrl || `/${ev.report_object_path}`;
-              }
-              if (ev.photo_object_paths && ev.photo_object_paths.length > 0) {
-                const photoUrls: string[] = [];
-                for (const p of ev.photo_object_paths) {
-                  const { data: pUrl } = await supabaseAdmin.storage
-                    .from("student-forum-files")
-                    .createSignedUrl(p, 3600);
-                  if (pUrl?.signedUrl) photoUrls.push(pUrl.signedUrl);
-                }
-                ev.photo_download_urls =
-                  photoUrls.length > 0 ? photoUrls : ev.photo_object_paths.map((p) => `/${p}`);
-              }
-              records.push(ev);
+            seenIds.add(ev.id);
+            if (ev.report_object_path) {
+              const { data: reportUrl } = await supabaseAdmin.storage
+                .from("student-forum-files")
+                .createSignedUrl(ev.report_object_path, 3600);
+              ev.report_download_url = reportUrl?.signedUrl || `/${ev.report_object_path}`;
             }
+            if (ev.photo_object_paths && ev.photo_object_paths.length > 0) {
+              const photoUrls: string[] = [];
+              for (const p of ev.photo_object_paths) {
+                const { data: pUrl } = await supabaseAdmin.storage
+                  .from("student-forum-files")
+                  .createSignedUrl(p, 3600);
+                if (pUrl?.signedUrl) photoUrls.push(pUrl.signedUrl);
+              }
+              ev.photo_download_urls =
+                photoUrls.length > 0 ? photoUrls : ev.photo_object_paths.map((p) => `/${p}`);
+            }
+            records.push(ev);
           }
         }
       }
     } catch (err) {
-      console.warn("Supabase admin events query note (using local records):", err);
+      console.warn("Supabase admin events query note:", err);
+    }
+
+    // 2. Secondary fallback / bundled events (e.g. if Supabase is cold)
+    const allLocal = await getEventsStoreAsync();
+    for (const ev of allLocal) {
+      if (ev.club_slug === data.clubSlug && ev.forum_slug === data.forumSlug && !seenIds.has(ev.id)) {
+        seenIds.add(ev.id);
+        records.push({
+          ...ev,
+          report_download_url: ev.report_download_url || `/${ev.report_object_path}`,
+          photo_download_urls: ev.photo_download_urls || ev.photo_object_paths.map((p) => `/${p}`),
+        });
+      }
     }
 
     records.sort((a, b) => (b.event_start > a.event_start ? 1 : -1));
@@ -291,30 +276,41 @@ export const getAdminForumEventsServerFn = createServerFn({ method: "GET" })
 // 7. Get All Admin Events (for cross-forum export)
 export const getAllAdminEventsServerFn = createServerFn({ method: "GET" }).handler(async () => {
   const token = getCookie(SESSION_COOKIE_NAME);
-  const session = verifySession(token);
+  const session = await verifySession(token);
   if (!session) throw new Error("Unauthorized. Admin access required.");
 
-  const allRecords: AdminEventRecord[] = [...getLocalEvents()];
+  const allRecords: AdminEventRecord[] = [];
+  const seenIds = new Set<string>();
 
+  // 1. Primary: Load all authoritative records from Supabase
   try {
-    if (process.env["SUPABASE_SERVICE_ROLE_KEY"]) {
-      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { supabaseAdmin, hasSupabaseAdminConfig } = await import(
+      "@/integrations/supabase/client.server"
+    );
+    if (hasSupabaseAdminConfig()) {
       const { data: events, error } = await supabaseAdmin
         .from("student_forum_events")
         .select("*")
         .order("created_at", { ascending: false });
 
       if (!error && events) {
-        const seenIds = new Set(allRecords.map((r) => r.id));
         for (const ev of events as AdminEventRecord[]) {
-          if (!seenIds.has(ev.id)) {
-            allRecords.push(ev);
-          }
+          seenIds.add(ev.id);
+          allRecords.push(ev);
         }
       }
     }
   } catch (err) {
     console.warn("Supabase all events query fallback:", err);
+  }
+
+  // 2. Secondary fallback / bundled events
+  const allLocal = await getEventsStoreAsync();
+  for (const ev of allLocal) {
+    if (!seenIds.has(ev.id)) {
+      seenIds.add(ev.id);
+      allRecords.push(ev);
+    }
   }
 
   return allRecords;
@@ -325,14 +321,18 @@ export const deleteAdminEventServerFn = createServerFn({ method: "POST" })
   .validator((input: { id: string }) => input)
   .handler(async ({ data }) => {
     const token = getCookie(SESSION_COOKIE_NAME);
-    const session = verifySession(token);
+    const session = await verifySession(token);
     if (!session) throw new Error("Unauthorized. Admin access required.");
 
     deleteLocalEvent(data.id);
+    const remaining = (await getEventsStoreAsync()).filter((e) => e.id !== data.id);
+    await saveEventsStoreAsync(remaining);
 
     try {
-      if (process.env["SUPABASE_SERVICE_ROLE_KEY"]) {
-        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { supabaseAdmin, hasSupabaseAdminConfig } = await import(
+        "@/integrations/supabase/client.server"
+      );
+      if (hasSupabaseAdminConfig()) {
         await supabaseAdmin.from("student_forum_events").delete().eq("id", data.id);
       }
     } catch (err) {

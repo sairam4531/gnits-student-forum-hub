@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { User, Mail, Building2 } from "lucide-react";
 import type { DeanDetails } from "@/lib/local-homepage-store";
 
@@ -11,6 +12,13 @@ export function DeanDetailsCard({ dean }: DeanDetailsCardProps) {
   const designation = dean.designation || "Dean, Student Affairs & Professor";
   const email = dean.email || "aparna.palle@gnits.ac.in";
   const office = dean.office || dean.contact_number || "Dean – Student Affairs, GNITS, Hyderabad";
+  const photoUrl = (dean.profile_photo || "").trim();
+
+  const [imageError, setImageError] = useState(false);
+
+  useEffect(() => {
+    setImageError(false);
+  }, [photoUrl]);
 
   return (
     <div className="w-full py-4">
@@ -25,12 +33,14 @@ export function DeanDetailsCard({ dean }: DeanDetailsCardProps) {
       {/* Clean White Card with ONLY the requested data */}
       <div className="max-w-2xl mx-auto rounded-2xl bg-white border border-slate-200/90 shadow-sm p-6 sm:p-8 flex flex-col sm:flex-row items-center gap-6 sm:gap-8">
         {/* Left Side: Photo Frame with "Dean Photo" */}
-        <div className="w-36 h-40 sm:w-40 sm:h-44 rounded-2xl border border-slate-300 flex flex-col items-center justify-center p-3 bg-slate-50/50 flex-shrink-0">
-          {dean.profile_photo ? (
+        <div className="w-36 h-40 sm:w-40 sm:h-44 rounded-2xl border border-slate-300 flex flex-col items-center justify-center p-3 bg-slate-50/50 flex-shrink-0 overflow-hidden shadow-2xs">
+          {photoUrl && !imageError ? (
             <img
-              src={dean.profile_photo}
+              src={photoUrl}
               alt={name}
               className="w-full h-full object-cover rounded-xl"
+              onError={() => setImageError(true)}
+              loading="eager"
             />
           ) : (
             <>

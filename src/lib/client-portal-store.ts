@@ -76,20 +76,7 @@ const DEFAULT_CLIENT_DATA: ClientHomepageData = {
       updated_at: new Date().toISOString(),
     },
   ],
-  videos: [
-    {
-      id: "video-1",
-      title: "GNITS Campus Tour & Student Affairs Highlights",
-      description: "Empowering women engineers through technical excellence, leadership, and vibrant student forum activities.",
-      video_url: "/assets/campus_loop_video.mp4",
-      thumbnail_url: "/assets/student-affairs-reference.jpg",
-      is_active: true,
-      is_featured: true,
-      display_order: 1,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-  ],
+  videos: [],
   dean: {
     id: "dean-1",
     name: "Dr. Aparna Patle",
@@ -148,14 +135,20 @@ function saveDeletedTracker(tracker: DeletedTracker): void {
 // CLIENT HOMEPAGE STORE
 // -------------------------------------------------------------
 export function sanitizeVideoRecord(v: HomepageVideo): HomepageVideo {
+  const url = v.video_url?.trim() || "";
   const isInvalidUrl =
-    !v.video_url ||
-    v.video_url.includes("ForBiggerBlazes") ||
-    v.video_url.startsWith("blob:");
+    !url ||
+    url.includes("ForBiggerBlazes") ||
+    url === "/assets/campus_loop_video.mp4" ||
+    (!url.startsWith("data:") &&
+      !url.startsWith("blob:") &&
+      !url.startsWith("/") &&
+      !url.startsWith("http://") &&
+      !url.startsWith("https://"));
 
   return {
     ...v,
-    video_url: isInvalidUrl ? "/assets/campus_loop_video.mp4" : v.video_url,
+    video_url: isInvalidUrl ? "" : url,
     thumbnail_url: v.thumbnail_url || "/assets/student-affairs-reference.jpg",
   };
 }
@@ -460,66 +453,51 @@ export function mergeServerWithClient(serverData: HomepageDataStore): ClientHome
   const clientData = getClientHomepageData();
   const tracker = getDeletedTracker();
 
-  // 1. Dean Details: If client modified Dean, preserve client Dean. Never allow empty strings to wipe valid fields.
-  let finalDean = sanitizeDeanRecord(clientData.dean);
-  if (!clientData.isUserModified && serverData.dean) {
-    const sDean = serverData.dean;
-    finalDean = sanitizeDeanRecord({
-      id: sDean.id || finalDean.id,
-      name: sDean.name?.trim() || finalDean.name,
-      designation: sDean.designation?.trim() || finalDean.designation,
-      profile_photo: sDean.profile_photo || finalDean.profile_photo,
-      email: sDean.email?.trim() || finalDean.email,
-      contact_number:
-        sDean.contact_number?.trim() ||
-        sDean.office?.trim() ||
-        finalDean.contact_number,
-      office:
-        sDean.office?.trim() ||
-        sDean.contact_number?.trim() ||
-        finalDean.office,
-      updated_at: sDean.updated_at || finalDean.updated_at,
-    });
+  // 1. Dean Details: Server-provided Dean from KV is authoritative for the public homepage.
+  // Never allow empty strings from stale browser cache to wipe valid server fields.
+  const sDean = serverData.dean;
+  const cDean = clientData.dean;
+  const resolvedPhoto =
+    sDean?.profile_photo?.trim() ||
+    cDean?.profile_photo?.trim() ||
+    "";
+
+  let finalDean = sanitizeDeanRecord({
+    id: sDean?.id || cDean?.id || "dean-1",
+    name: sDean?.name?.trim() || cDean?.name?.trim() || DEFAULT_CLIENT_DATA.dean.name,
+    designation: sDean?.designation?.trim() || cDean?.designation?.trim() || DEFAULT_CLIENT_DATA.dean.designation,
+    profile_photo: resolvedPhoto,
+    email: sDean?.email?.trim() || cDean?.email?.trim() || DEFAULT_CLIENT_DATA.dean.email,
+    contact_number:
+      sDean?.contact_number?.trim() ||
+      sDean?.office?.trim() ||
+      cDean?.contact_number?.trim() ||
+      cDean?.office?.trim() ||
+      DEFAULT_CLIENT_DATA.dean.contact_number,
+    office:
+      sDean?.office?.trim() ||
+      sDean?.contact_number?.trim() ||
+      cDean?.office?.trim() ||
+      cDean?.contact_number?.trim() ||
+      DEFAULT_CLIENT_DATA.dean.office,
+    updated_at: sDean?.updated_at || cDean?.updated_at || new Date().toISOString(),
+  });
+
+  // 2. Videos: Server videos are authoritative across all browsers
+  let finalVideos: HomepageVideo[] = [];
+  if (Array.isArray(serverData.videos)) {
+    finalVideos = serverData.videos
+      .filter((sv) => !tracker.videoIds.includes(sv.id) && sv.video_url && !sv.video_url.includes("ForBiggerBlazes"))
+      .map(sanitizeVideoRecord);
   }
 
-  // 2. Videos: Merge without resurrecting deleted items, preserving user-uploaded videos
-  const mergedVideosMap = new Map<string, HomepageVideo>();
-
-  // Add server videos that were not deleted
-  (serverData.videos || []).forEach((sv) => {
-    if (!tracker.videoIds.includes(sv.id)) {
-      mergedVideosMap.set(sv.id, sanitizeVideoRecord(sv));
-    }
-  });
-
-  // Client videos take precedence or append
-  (clientData.videos || []).forEach((cv) => {
-    if (!tracker.videoIds.includes(cv.id)) {
-      mergedVideosMap.set(cv.id, sanitizeVideoRecord(cv));
-    }
-  });
-
-  let finalVideos = Array.from(mergedVideosMap.values()).map(sanitizeVideoRecord);
-  if (finalVideos.length === 0) {
-    finalVideos = DEFAULT_CLIENT_DATA.videos.map(sanitizeVideoRecord);
+  // 3. Photos: Server photos are authoritative across all browsers
+  let finalPhotos: HomepagePhoto[] = [];
+  if (Array.isArray(serverData.photos) && serverData.photos.length > 0) {
+    finalPhotos = serverData.photos.filter((sp) => !tracker.photoIds.includes(sp.id));
+  } else {
+    finalPhotos = (clientData.photos || []).filter((cp) => !tracker.photoIds.includes(cp.id));
   }
-
-  // 3. Photos: Merge without resurrecting deleted items
-  const mergedPhotosMap = new Map<string, HomepagePhoto>();
-
-  (serverData.photos || []).forEach((sp) => {
-    if (!tracker.photoIds.includes(sp.id)) {
-      mergedPhotosMap.set(sp.id, sp);
-    }
-  });
-
-  (clientData.photos || []).forEach((cp) => {
-    if (!tracker.photoIds.includes(cp.id)) {
-      mergedPhotosMap.set(cp.id, cp);
-    }
-  });
-
-  let finalPhotos = Array.from(mergedPhotosMap.values());
   if (finalPhotos.length === 0) {
     finalPhotos = DEFAULT_CLIENT_DATA.photos;
   }
@@ -532,10 +510,18 @@ export function mergeServerWithClient(serverData: HomepageDataStore): ClientHome
     lastUpdated: Date.now(),
   };
 
-  // Keep client storage refreshed with the verified merged state
+  // Keep client storage refreshed without exceeding the ~5MB localStorage quota on large base64 videos
   if (isClient()) {
     try {
-      localStorage.setItem(HOMEPAGE_KEY, JSON.stringify(result));
+      const cacheSafeResult: ClientHomepageData = {
+        ...result,
+        videos: result.videos.map((v) =>
+          v.video_url.startsWith("data:") && v.video_url.length > 500_000
+            ? { ...v, video_url: "" }
+            : v,
+        ),
+      };
+      localStorage.setItem(HOMEPAGE_KEY, JSON.stringify(cacheSafeResult));
     } catch {
       // ignore
     }
