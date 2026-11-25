@@ -261,7 +261,7 @@ export function ConductedEventsView({
         // Save report file to IndexedDB for reliable permanent storage & instant downloads
         await saveEventFile(finalReportPath, reportFile, reportFile.name);
 
-        if (reportFile.size < 1024 * 1024) {
+        if (reportFile.size <= 3 * 1024 * 1024) {
           safeReportBase64 = await fileToBase64(reportFile);
         }
 

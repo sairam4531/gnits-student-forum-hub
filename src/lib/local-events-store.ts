@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import type { AdminEventRecord } from "@/lib/admin.functions";
+import { isSubmissionPath } from "@/lib/event-validation";
 import { getCloudflareKVNamespace } from "@/lib/local-homepage-store";
 
 const LOCAL_DATA_DIR = path.resolve(process.cwd(), "data");
@@ -161,5 +162,135 @@ export async function saveEventsStoreAsync(events: AdminEventRecord[]): Promise<
     }
   } catch (err) {
     console.warn("Could not persist events to Cloudflare KV:", err);
+  }
+}
+
+export interface StoredEventFileMetadata {
+  contentType: string;
+  size: number;
+  fileName: string;
+}
+
+function eventFileMetaKey(objectPath: string): string {
+  return `event_file_meta:${objectPath}`;
+}
+
+function eventFileDataKey(objectPath: string): string {
+  return `event_file_data:${objectPath}`;
+}
+
+export function buildEventFileDownloadUrl(objectPath: string): string {
+  return `/api/event-file?path=${encodeURIComponent(objectPath)}`;
+}
+
+function parseDataUrlBase64(
+  dataUrlOrBase64: string,
+  fallbackContentType = "application/octet-stream",
+): { bytes: Uint8Array<ArrayBuffer>; contentType: string } | null {
+  const trimmed = dataUrlOrBase64.trim();
+  if (!trimmed) return null;
+
+  let contentType = fallbackContentType;
+  let base64Body = trimmed;
+
+  const commaIdx = trimmed.indexOf(",");
+  if (trimmed.startsWith("data:") && commaIdx > 0) {
+    const header = trimmed.slice(5, commaIdx);
+    const semiIdx = header.indexOf(";");
+    const detectedType = (semiIdx >= 0 ? header.slice(0, semiIdx) : header).trim();
+    if (detectedType) contentType = detectedType;
+    base64Body = trimmed.slice(commaIdx + 1);
+  }
+
+  try {
+    const binaryStr = atob(base64Body);
+    const buffer = new ArrayBuffer(binaryStr.length);
+    const bytes = new Uint8Array(buffer);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+    return { bytes, contentType };
+  } catch {
+    return null;
+  }
+}
+
+export async function saveEventFileToKv(
+  objectPath: string,
+  dataUrlOrBase64: string,
+  fallbackContentType?: string,
+  fileName?: string,
+): Promise<boolean> {
+  if (!isSubmissionPath(objectPath)) return false;
+  const cfKv = getCloudflareKVNamespace();
+  if (!cfKv || typeof cfKv.put !== "function") return false;
+
+  const decoded = parseDataUrlBase64(dataUrlOrBase64, fallbackContentType);
+  if (!decoded || decoded.bytes.byteLength === 0) return false;
+
+  const meta: StoredEventFileMetadata = {
+    contentType: decoded.contentType,
+    size: decoded.bytes.byteLength,
+    fileName: fileName || objectPath.split("/").pop() || "file",
+  };
+
+  try {
+    await cfKv.put(eventFileDataKey(objectPath), decoded.bytes.buffer);
+    await cfKv.put(eventFileMetaKey(objectPath), JSON.stringify(meta));
+    return true;
+  } catch (err) {
+    console.warn("Could not save event file to Cloudflare KV:", objectPath, err);
+    return false;
+  }
+}
+
+export async function getEventFileFromKv(
+  objectPath: string,
+): Promise<{ bytes: ArrayBuffer; contentType: string; fileName: string } | null> {
+  if (!isSubmissionPath(objectPath)) return null;
+  const cfKv = getCloudflareKVNamespace();
+  if (!cfKv || typeof cfKv.get !== "function") return null;
+
+  try {
+    const [meta, bytes] = await Promise.all([
+      cfKv.get<StoredEventFileMetadata>(eventFileMetaKey(objectPath), "json"),
+      cfKv.get<ArrayBuffer>(eventFileDataKey(objectPath), "arrayBuffer"),
+    ]);
+    if (!bytes) return null;
+    return {
+      bytes,
+      contentType: meta?.contentType || "application/octet-stream",
+      fileName: meta?.fileName || objectPath.split("/").pop() || "file",
+    };
+  } catch (err) {
+    console.warn("Could not read event file from Cloudflare KV:", objectPath, err);
+    return null;
+  }
+}
+
+export async function hasEventFileInKv(objectPath: string): Promise<boolean> {
+  if (!isSubmissionPath(objectPath)) return false;
+  const cfKv = getCloudflareKVNamespace();
+  if (!cfKv || typeof cfKv.get !== "function") return false;
+  try {
+    const meta = await cfKv.get<StoredEventFileMetadata>(eventFileMetaKey(objectPath), "json");
+    return Boolean(meta && meta.size > 0);
+  } catch {
+    return false;
+  }
+}
+
+export async function deleteEventFilesFromKv(paths: string[]): Promise<void> {
+  const cfKv = getCloudflareKVNamespace();
+  if (!cfKv || typeof cfKv.delete !== "function") return;
+
+  for (const p of paths) {
+    if (!isSubmissionPath(p)) continue;
+    try {
+      await cfKv.delete(eventFileMetaKey(p));
+      await cfKv.delete(eventFileDataKey(p));
+    } catch {
+      // ignore cleanup failures
+    }
   }
 }

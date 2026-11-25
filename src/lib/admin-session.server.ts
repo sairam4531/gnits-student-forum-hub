@@ -99,3 +99,27 @@ export async function verifySession(token: string | undefined): Promise<SessionP
     return null;
   }
 }
+
+export function getCookieFromHeader(cookieHeader: string | null, name: string): string | undefined {
+  if (!cookieHeader) return undefined;
+  const parts = cookieHeader.split(";");
+  for (const part of parts) {
+    const eqIdx = part.indexOf("=");
+    if (eqIdx <= 0) continue;
+    const key = part.slice(0, eqIdx).trim();
+    if (key === name) {
+      const rawVal = part.slice(eqIdx + 1).trim();
+      try {
+        return decodeURIComponent(rawVal);
+      } catch {
+        return rawVal;
+      }
+    }
+  }
+  return undefined;
+}
+
+export async function verifyAdminRequest(request: Request): Promise<SessionPayload | null> {
+  const token = getCookieFromHeader(request.headers.get("cookie"), SESSION_COOKIE_NAME);
+  return verifySession(token);
+}

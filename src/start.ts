@@ -30,6 +30,10 @@ const campusVideoMiddleware = createMiddleware().server(async ({ request, pathna
     const { handleCampusVideoRequest } = await import("./lib/video-stream.server");
     return handleCampusVideoRequest(request);
   }
+  if (pathname === "/api/event-file") {
+    const { handleEventFileRequest } = await import("./lib/event-file.server");
+    return handleEventFileRequest(request);
+  }
   return next();
 });
 

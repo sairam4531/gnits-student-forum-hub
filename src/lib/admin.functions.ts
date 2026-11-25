@@ -9,6 +9,9 @@ import {
   deleteLocalEvent,
   getEventsStoreAsync,
   saveEventsStoreAsync,
+  deleteEventFilesFromKv,
+  hasEventFileInKv,
+  buildEventFileDownloadUrl,
 } from "@/lib/local-events-store";
 import {
   SESSION_COOKIE_NAME,
@@ -123,28 +126,32 @@ export const getAdminProfileServerFn = createServerFn({ method: "GET" }).handler
   if (!session) throw new Error("Unauthorized. Please log in.");
 
   try {
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data, error } = await supabaseAdmin
-      .from("admin_profiles")
-      .select("username, display_name, avatar_url, updated_at")
-      .eq("username", session.username)
-      .maybeSingle();
+    const { supabaseAdmin, hasSupabaseAdminConfig } = await import(
+      "@/integrations/supabase/client.server"
+    );
+    if (hasSupabaseAdminConfig()) {
+      const { data, error } = await supabaseAdmin
+        .from("admin_profiles")
+        .select("username, display_name, avatar_url, updated_at")
+        .eq("username", session.username)
+        .maybeSingle();
 
-    if (!error && data) {
-      return data as AdminProfileRecord;
+      if (!error && data) {
+        return data as AdminProfileRecord;
+      }
+
+      // Insert default profile if not exists
+      const { data: newProfile } = await supabaseAdmin
+        .from("admin_profiles")
+        .upsert({
+          username: session.username,
+          display_name: "GNITS Student Council Admin",
+        })
+        .select()
+        .single();
+
+      if (newProfile) return newProfile as AdminProfileRecord;
     }
-
-    // Insert default profile if not exists
-    const { data: newProfile } = await supabaseAdmin
-      .from("admin_profiles")
-      .upsert({
-        username: session.username,
-        display_name: "GNITS Student Council Admin",
-      })
-      .select()
-      .single();
-
-    if (newProfile) return newProfile as AdminProfileRecord;
   } catch (err) {
     console.warn("Using in-memory admin profile fallback:", err);
   }
@@ -168,20 +175,24 @@ export const updateAdminProfileServerFn = createServerFn({ method: "POST" })
     if (!session) throw new Error("Unauthorized. Please log in.");
 
     try {
-      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-      const { data: profile, error } = await supabaseAdmin
-        .from("admin_profiles")
-        .upsert({
-          username: session.username,
-          display_name: data.display_name,
-          avatar_url: data.avatar_url ?? null,
-          updated_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
+      const { supabaseAdmin, hasSupabaseAdminConfig } = await import(
+        "@/integrations/supabase/client.server"
+      );
+      if (hasSupabaseAdminConfig()) {
+        const { data: profile, error } = await supabaseAdmin
+          .from("admin_profiles")
+          .upsert({
+            username: session.username,
+            display_name: data.display_name,
+            avatar_url: data.avatar_url ?? null,
+            updated_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
 
-      if (!error && profile) {
-        return profile as AdminProfileRecord;
+        if (!error && profile) {
+          return profile as AdminProfileRecord;
+        }
       }
     } catch (err) {
       console.warn("Using in-memory admin profile update:", err);
@@ -256,15 +267,39 @@ export const getAdminForumEventsServerFn = createServerFn({ method: "GET" })
       console.warn("Supabase admin events query note:", err);
     }
 
-    // 2. Secondary fallback / bundled events (e.g. if Supabase is cold)
+    // 2. Secondary fallback / bundled events (e.g. if Supabase is cold or KV-backed)
     const allLocal = await getEventsStoreAsync();
     for (const ev of allLocal) {
       if (ev.club_slug === data.clubSlug && ev.forum_slug === data.forumSlug && !seenIds.has(ev.id)) {
         seenIds.add(ev.id);
+        let resolvedReportUrl = ev.report_download_url || `/${ev.report_object_path}`;
+        if (
+          ev.report_object_path &&
+          !resolvedReportUrl.startsWith("/api/event-file") &&
+          !resolvedReportUrl.startsWith("http") &&
+          (await hasEventFileInKv(ev.report_object_path))
+        ) {
+          resolvedReportUrl = buildEventFileDownloadUrl(ev.report_object_path);
+        }
+
+        const resolvedPhotoUrls: string[] = [];
+        for (let i = 0; i < (ev.photo_object_paths?.length || 0); i++) {
+          const p = ev.photo_object_paths[i]!;
+          let pUrl = ev.photo_download_urls?.[i] || `/${p}`;
+          if (
+            !pUrl.startsWith("/api/event-file") &&
+            !pUrl.startsWith("http") &&
+            (await hasEventFileInKv(p))
+          ) {
+            pUrl = buildEventFileDownloadUrl(p);
+          }
+          resolvedPhotoUrls.push(pUrl);
+        }
+
         records.push({
           ...ev,
-          report_download_url: ev.report_download_url || `/${ev.report_object_path}`,
-          photo_download_urls: ev.photo_download_urls || ev.photo_object_paths.map((p) => `/${p}`),
+          report_download_url: resolvedReportUrl,
+          photo_download_urls: resolvedPhotoUrls,
         });
       }
     }
@@ -325,8 +360,17 @@ export const deleteAdminEventServerFn = createServerFn({ method: "POST" })
     if (!session) throw new Error("Unauthorized. Admin access required.");
 
     deleteLocalEvent(data.id);
-    const remaining = (await getEventsStoreAsync()).filter((e) => e.id !== data.id);
+    const existingEvents = await getEventsStoreAsync();
+    const targetEvent = existingEvents.find((e) => e.id === data.id);
+    const remaining = existingEvents.filter((e) => e.id !== data.id);
     await saveEventsStoreAsync(remaining);
+
+    if (targetEvent) {
+      await deleteEventFilesFromKv([
+        targetEvent.report_object_path,
+        ...(targetEvent.photo_object_paths || []),
+      ]);
+    }
 
     try {
       const { supabaseAdmin, hasSupabaseAdminConfig } = await import(

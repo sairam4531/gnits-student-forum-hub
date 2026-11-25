@@ -176,4 +176,162 @@ describe("Event Submission Flow & Security Audit", () => {
       }
     });
   });
+
+  // -------------------------------------------------------------
+  // 4. Cloudflare KV Event Submission & Admin File Access
+  // -------------------------------------------------------------
+  describe("Cloudflare KV Event Submission Fallback & File Security", () => {
+    it("commits event & files to Cloudflare KV when SUPABASE_SERVICE_ROLE_KEY holds publishable key, enforces admin auth on updates, and serves files only to admins", async () => {
+      const { processStudentEventSubmission } = await import("@/lib/events.server");
+      const { handleEventFileRequest } = await import("@/lib/event-file.server");
+      const { signSession, SESSION_COOKIE_NAME } = await import("@/lib/admin-session.server");
+      const { deleteLocalEvent } = await import("@/lib/local-events-store");
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+
+      const kvMap = new Map<string, string | ArrayBuffer>();
+      const subId = "b1b2c3d4-e5f6-4890-abcd-ef1234567891";
+      const reportPath = `submissions/${subId}/report.pdf`;
+      const photoPath = `submissions/${subId}/0_photo.png`;
+
+      type GlobalEnvHolder = { __env__?: Record<string, unknown> | undefined };
+      const holder = globalThis as unknown as GlobalEnvHolder;
+      const prevEnv = holder.__env__;
+      const prevEventsStore = globalThis.__gnitsEventsStore;
+
+      const samplePdfBytes = new Uint8Array([37, 80, 68, 70, 45, 49, 46, 52]); // %PDF-1.4
+      const samplePdfBase64 = `data:application/pdf;base64,${Buffer.from(samplePdfBytes).toString("base64")}`;
+      const sampleImgBase64 = `data:image/png;base64,${Buffer.from([137, 80, 78, 71]).toString("base64")}`;
+
+      const payload = {
+        id: subId,
+        clubSlug: "technical-events",
+        forumSlug: "iste",
+        eventName: "Cloudflare KV Fallback Symposium",
+        eventStart: "2026-11-24",
+        eventEnd: "2026-11-25",
+        resourcePersons: "Dr. A. Tester",
+        submitterName: "Student Coordinator",
+        submitterEmail: "coord@gnits.ac.in",
+        reportObjectPath: reportPath,
+        reportFileName: "report.pdf",
+        reportContentType: "application/pdf",
+        photoObjectPaths: [photoPath],
+        photoFileNames: ["photo.png"],
+        reportBase64: samplePdfBase64,
+        photoBase64s: [sampleImgBase64],
+      };
+
+      try {
+        // Without KV and with publishable key as service role key -> rejects cleanly
+        holder.__env__ = {
+          ADMIN_SESSION_SECRET: "test-admin-secret-for-vitest",
+          SUPABASE_URL: "https://example.supabase.co",
+          SUPABASE_PUBLISHABLE_KEY: "sb_publishable_same_key",
+          SUPABASE_SERVICE_ROLE_KEY: "sb_publishable_same_key",
+        };
+        await expect(processStudentEventSubmission(payload, undefined)).rejects.toThrow(
+          /Configuration error/i,
+        );
+
+        // With Cloudflare KV bound even while SUPABASE_SERVICE_ROLE_KEY is publishable -> succeeds
+        globalThis.__gnitsEventsStore = undefined;
+        holder.__env__ = {
+          ADMIN_SESSION_SECRET: "test-admin-secret-for-vitest",
+          SUPABASE_URL: "https://example.supabase.co",
+          SUPABASE_PUBLISHABLE_KEY: "sb_publishable_same_key",
+          SUPABASE_SERVICE_ROLE_KEY: "sb_publishable_same_key",
+          KV: {
+            get: async (key: string, type: string) => {
+              const val = kvMap.get(key) ?? null;
+              if (val === null) return null;
+              if (type === "json" && typeof val === "string") return JSON.parse(val);
+              return val;
+            },
+            put: async (key: string, value: string | ArrayBuffer | ArrayBufferView) => {
+              if (typeof value === "string" || value instanceof ArrayBuffer) {
+                kvMap.set(key, value);
+              } else {
+                const copy = new Uint8Array(value.byteLength);
+                copy.set(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
+                kvMap.set(key, copy.buffer);
+              }
+            },
+            delete: async (key: string) => {
+              kvMap.delete(key);
+            },
+          },
+        };
+
+        const result = await processStudentEventSubmission(payload, undefined);
+        expect(result).toEqual({ id: subId, success: true });
+
+        const storedEventsRaw = kvMap.get("events_store") as string;
+        expect(storedEventsRaw).toBeTruthy();
+        const storedEvents = JSON.parse(storedEventsRaw) as Array<{
+          id: string;
+          report_download_url?: string;
+          photo_download_urls?: string[];
+        }>;
+        const saved = storedEvents.find((e) => e.id === subId);
+        expect(saved?.report_download_url).toBe(
+          `/api/event-file?path=${encodeURIComponent(reportPath)}`,
+        );
+        expect(saved?.photo_download_urls?.[0]).toBe(
+          `/api/event-file?path=${encodeURIComponent(photoPath)}`,
+        );
+
+        // Unauthenticated edit attempt on existing event ID must fail
+        await expect(
+          processStudentEventSubmission({ ...payload, eventName: "Tampered" }, undefined),
+        ).rejects.toThrow(/Unauthorized/i);
+
+        // Unauthenticated request to /api/event-file must be blocked
+        const unauthFileRes = await handleEventFileRequest(
+          new Request(`http://localhost/api/event-file?path=${encodeURIComponent(reportPath)}`),
+        );
+        expect(unauthFileRes.status).toBe(401);
+
+        // Authenticated admin gets 400 on invalid path traversal, 200 on valid submission path
+        const token = await signSession("studentcouncil");
+        const cookieHeader = `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}`;
+
+        const badPathRes = await handleEventFileRequest(
+          new Request("http://localhost/api/event-file?path=submissions/../secret.txt", {
+            headers: { Cookie: cookieHeader },
+          }),
+        );
+        expect(badPathRes.status).toBe(400);
+
+        const okFileRes = await handleEventFileRequest(
+          new Request(`http://localhost/api/event-file?path=${encodeURIComponent(reportPath)}`, {
+            headers: { Cookie: cookieHeader },
+          }),
+        );
+        expect(okFileRes.status).toBe(200);
+        expect(okFileRes.headers.get("Content-Type")).toBe("application/pdf");
+        const returnedBytes = new Uint8Array(await okFileRes.arrayBuffer());
+        expect(Array.from(returnedBytes)).toEqual(Array.from(samplePdfBytes));
+
+        // Authenticated admin edit on existing event ID succeeds
+        const updated = await processStudentEventSubmission(
+          { ...payload, eventName: "Updated Symposium" },
+          token,
+        );
+        expect(updated.success).toBe(true);
+      } finally {
+        deleteLocalEvent(subId);
+        globalThis.__gnitsEventsStore = prevEventsStore;
+        const subDir = path.resolve(process.cwd(), "public", "submissions", subId);
+        if (fs.existsSync(subDir)) {
+          fs.rmSync(subDir, { recursive: true, force: true });
+        }
+        if (prevEnv === undefined) {
+          delete holder.__env__;
+        } else {
+          holder.__env__ = prevEnv;
+        }
+      }
+    });
+  });
 });

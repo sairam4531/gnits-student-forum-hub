@@ -38,12 +38,14 @@ export interface SupabaseServerConfig {
 export function getSupabaseServerConfig(): SupabaseServerConfig {
   const g = globalThis as unknown as {
     __env__?: Record<string, string | undefined>;
+    __cloudflareEnv?: Record<string, string | undefined>;
     env?: Record<string, string | undefined>;
   };
 
   const url =
     g.__env__?.['SUPABASE_URL'] ||
     g.__env__?.['VITE_SUPABASE_URL'] ||
+    g.__cloudflareEnv?.['SUPABASE_URL'] ||
     g.env?.['SUPABASE_URL'] ||
     (typeof process !== 'undefined'
       ? (process.env['SUPABASE_URL'] || process.env['VITE_SUPABASE_URL'])
@@ -52,6 +54,7 @@ export function getSupabaseServerConfig(): SupabaseServerConfig {
   const publishableKey =
     g.__env__?.['SUPABASE_PUBLISHABLE_KEY'] ||
     g.__env__?.['VITE_SUPABASE_PUBLISHABLE_KEY'] ||
+    g.__cloudflareEnv?.['SUPABASE_PUBLISHABLE_KEY'] ||
     g.env?.['SUPABASE_PUBLISHABLE_KEY'] ||
     (typeof process !== 'undefined'
       ? (process.env['SUPABASE_PUBLISHABLE_KEY'] || process.env['VITE_SUPABASE_PUBLISHABLE_KEY'])
@@ -59,12 +62,14 @@ export function getSupabaseServerConfig(): SupabaseServerConfig {
 
   const serviceRoleKey =
     g.__env__?.['SUPABASE_SERVICE_ROLE_KEY'] ||
+    g.__cloudflareEnv?.['SUPABASE_SERVICE_ROLE_KEY'] ||
     g.env?.['SUPABASE_SERVICE_ROLE_KEY'] ||
     (typeof process !== 'undefined' ? process.env['SUPABASE_SERVICE_ROLE_KEY'] : undefined);
 
   const projectId =
     g.__env__?.['SUPABASE_PROJECT_ID'] ||
     g.__env__?.['VITE_SUPABASE_PROJECT_ID'] ||
+    g.__cloudflareEnv?.['SUPABASE_PROJECT_ID'] ||
     g.env?.['SUPABASE_PROJECT_ID'] ||
     (typeof process !== 'undefined'
       ? (process.env['SUPABASE_PROJECT_ID'] || process.env['VITE_SUPABASE_PROJECT_ID'])
@@ -115,28 +120,43 @@ export function validateServiceRoleKey(
   return { valid: true };
 }
 
-export function hasSupabaseAdminConfig(): boolean {
-  const { url, serviceRoleKey, publishableKey } = getSupabaseServerConfig();
-  if (!url || !serviceRoleKey) return false;
-  return validateServiceRoleKey(serviceRoleKey, publishableKey).valid;
-}
-
-function createSupabaseAdminClient(): SupabaseClient<Database> {
-  const { url, publishableKey, serviceRoleKey, projectId } = getSupabaseServerConfig();
+export function getSupabaseAdminConfigErrorMessage(): string | null {
+  const { url, publishableKey, serviceRoleKey } = getSupabaseServerConfig();
 
   if (!url || !serviceRoleKey) {
     const missing = [
       ...(!url ? ['SUPABASE_URL'] : []),
       ...(!serviceRoleKey ? ['SUPABASE_SERVICE_ROLE_KEY'] : []),
     ];
-    const message = `Missing Supabase server configuration: ${missing.join(', ')}. Please set SUPABASE_SERVICE_ROLE_KEY in Cloudflare Worker Secrets.`;
-    console.error(`[Supabase Admin] ${message}`);
-    throw new Error(message);
+    return `Missing Supabase server configuration: ${missing.join(', ')}. Please configure SUPABASE_SERVICE_ROLE_KEY in your Cloudflare Worker Secrets or deployment environment variables (e.g. Vercel).`;
   }
 
   const validation = validateServiceRoleKey(serviceRoleKey, publishableKey);
   if (!validation.valid) {
-    const message = `Configuration error: ${validation.reason} Please configure the genuine SUPABASE_SERVICE_ROLE_KEY as a Cloudflare Worker Secret.`;
+    return `Configuration error: ${validation.reason} Please configure the genuine SUPABASE_SERVICE_ROLE_KEY as a Cloudflare Worker Secret or deployment environment variable (e.g. Vercel).`;
+  }
+
+  return null;
+}
+
+export function hasSupabaseAdminConfig(): boolean {
+  return getSupabaseAdminConfigErrorMessage() === null;
+}
+
+function createSupabaseAdminClient(): SupabaseClient<Database> {
+  const { url, publishableKey, serviceRoleKey, projectId } = getSupabaseServerConfig();
+
+  const configError = getSupabaseAdminConfigErrorMessage();
+  if (configError || !url || !serviceRoleKey) {
+    const message = configError || 'Missing Supabase server configuration.';
+    console.error(`[Supabase Admin] ${message}`);
+    throw new Error(message);
+  }
+
+  // Validate again explicitly to keep TypeScript narrowing crisp
+  const validation = validateServiceRoleKey(serviceRoleKey, publishableKey);
+  if (!validation.valid) {
+    const message = `Configuration error: ${validation.reason} Please configure the genuine SUPABASE_SERVICE_ROLE_KEY as a Cloudflare Worker Secret or deployment environment variable (e.g. Vercel).`;
     console.error(`[Supabase Admin] ${message}`);
     throw new Error(message);
   }

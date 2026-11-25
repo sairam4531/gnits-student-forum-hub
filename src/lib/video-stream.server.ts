@@ -2,7 +2,7 @@
 // Stores video binary chunks in Cloudflare KV (globally shared across worker isolates)
 // with local filesystem / /tmp fallback for Node.js dev and serverless containers.
 import { getCloudflareKVNamespace } from "@/lib/local-homepage-store";
-import { SESSION_COOKIE_NAME, verifySession } from "@/lib/admin-session.server";
+import { verifyAdminRequest } from "@/lib/admin-session.server";
 
 export interface VideoStreamMetadata {
   id: string;
@@ -19,25 +19,6 @@ const MAX_SINGLE_CHUNK_BYTES = 10 * 1024 * 1024; // Safety bound per chunk reque
 
 function isValidVideoId(id: string | null): id is string {
   return Boolean(id && VALID_VIDEO_ID_RE.test(id));
-}
-
-function getCookieFromHeader(cookieHeader: string | null, name: string): string | undefined {
-  if (!cookieHeader) return undefined;
-  const parts = cookieHeader.split(";");
-  for (const part of parts) {
-    const eqIdx = part.indexOf("=");
-    if (eqIdx <= 0) continue;
-    const key = part.slice(0, eqIdx).trim();
-    if (key === name) {
-      const rawVal = part.slice(eqIdx + 1).trim();
-      try {
-        return decodeURIComponent(rawVal);
-      } catch {
-        return rawVal;
-      }
-    }
-  }
-  return undefined;
 }
 
 function metaKey(id: string): string {
@@ -237,8 +218,7 @@ export async function handleCampusVideoRequest(request: Request): Promise<Respon
   }
 
   if (request.method === "POST") {
-    const token = getCookieFromHeader(request.headers.get("cookie"), SESSION_COOKIE_NAME);
-    const session = await verifySession(token);
+    const session = await verifyAdminRequest(request);
     if (!session) {
       return Response.json({ error: "Unauthorized administrator access." }, { status: 401 });
     }
