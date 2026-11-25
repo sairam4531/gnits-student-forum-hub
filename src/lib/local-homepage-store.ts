@@ -253,6 +253,9 @@ export async function saveHomepageStoreAsync(data: HomepageDataStore): Promise<v
     }
   } catch (err) {
     console.warn("Could not persist homepage store to Cloudflare KV:", err);
+    throw new Error(
+      "Could not save homepage data to cloud storage. If uploading a video, try a smaller file under 15 MB.",
+    );
   }
 }
 

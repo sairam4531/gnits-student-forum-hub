@@ -23,6 +23,28 @@ const publicForumInput = z.object({
   forumSlug: z.string().min(1).max(100),
 });
 
+function getPublicSupabaseConfig() {
+  const g = globalThis as unknown as {
+    __env__?: Record<string, string | undefined>;
+    env?: Record<string, string | undefined>;
+  };
+  const url =
+    g.__env__?.["SUPABASE_URL"] ||
+    g.__env__?.["VITE_SUPABASE_URL"] ||
+    g.env?.["SUPABASE_URL"] ||
+    (typeof process !== "undefined"
+      ? (process.env["SUPABASE_URL"] || process.env["VITE_SUPABASE_URL"])
+      : undefined);
+  const key =
+    g.__env__?.["SUPABASE_PUBLISHABLE_KEY"] ||
+    g.__env__?.["VITE_SUPABASE_PUBLISHABLE_KEY"] ||
+    g.env?.["SUPABASE_PUBLISHABLE_KEY"] ||
+    (typeof process !== "undefined"
+      ? (process.env["SUPABASE_PUBLISHABLE_KEY"] || process.env["VITE_SUPABASE_PUBLISHABLE_KEY"])
+      : undefined);
+  return { url, key };
+}
+
 function createPublicClient(url: string, key: string) {
   return createClient<Database>(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -59,8 +81,7 @@ export const getAllPublicEventsServerFn = createServerFn({ method: "GET" }).hand
     const seenIds = new Set<string>();
 
     // 1. Primary: Retrieve events from Supabase
-    const url = process.env["SUPABASE_URL"];
-    const key = process.env["SUPABASE_PUBLISHABLE_KEY"];
+    const { url, key } = getPublicSupabaseConfig();
     if (url && key) {
       try {
         const client = createPublicClient(url, key);
@@ -123,8 +144,7 @@ export const getPublicForumEvents = createServerFn({ method: "GET" })
     const seenIds = new Set<string>();
 
     // 1. Primary: Fetch from Supabase
-    const url = process.env["SUPABASE_URL"];
-    const key = process.env["SUPABASE_PUBLISHABLE_KEY"];
+    const { url, key } = getPublicSupabaseConfig();
     if (url && key) {
       try {
         const client = createPublicClient(url, key);
@@ -178,12 +198,14 @@ export const submitStudentEvent = createServerFn({ method: "POST" })
     const eventId = data.id || globalThis.crypto.randomUUID();
 
     // 1. Verify Supabase configuration
-    const supabaseUrl = process.env["SUPABASE_URL"];
-    if (!supabaseUrl) {
+    const { supabaseAdmin, getSupabaseServerConfig } = await import(
+      "@/integrations/supabase/client.server"
+    );
+
+    const { url } = getSupabaseServerConfig();
+    if (!url) {
       throw new Error("Database configuration error: Supabase URL is not configured on the server.");
     }
-
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     // 2. Authorization Enforcement:
     // If updating an existing event, caller MUST be an authenticated administrator!
@@ -243,7 +265,15 @@ export const submitStudentEvent = createServerFn({ method: "POST" })
     });
 
     if (upsertError) {
-      console.error("Supabase student event upsert failed:", upsertError);
+      console.error("Supabase student event upsert failed:", upsertError.message || upsertError.code);
+      if (
+        upsertError.code === "42501" ||
+        upsertError.message?.toLowerCase().includes("permission denied")
+      ) {
+        throw new Error(
+          "Database permission error: Unable to commit event submission. The server-side service-role credential lacks write permissions or is misconfigured.",
+        );
+      }
       throw new Error(
         `Database commit failed: ${upsertError.message || upsertError.code || "Database error"}`,
       );

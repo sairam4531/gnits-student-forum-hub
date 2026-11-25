@@ -30,7 +30,11 @@ export function LoopVideoShowcase({
 
   // Authoritative server-provided video URL (only active when admin has added a video)
   const serverVideoUrl =
-    video && video.is_active && video.video_url?.trim() && !video.video_url.includes("ForBiggerBlazes")
+    video &&
+    video.is_active &&
+    video.video_url?.trim() &&
+    !video.video_url.includes("ForBiggerBlazes") &&
+    video.video_url.trim() !== "/assets/campus_loop_video.mp4"
       ? video.video_url.trim()
       : null;
 

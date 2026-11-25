@@ -220,11 +220,7 @@ export const saveVideoAdminServerFn = createServerFn({ method: "POST" })
     }
 
     if (data.videoBase64 && data.videoFileName) {
-      try {
-        finalVideoUrl = saveUploadedMedia("videos", data.videoFileName, data.videoBase64);
-      } catch (err) {
-        console.warn("Could not save video to disk:", err);
-      }
+      finalVideoUrl = saveUploadedMedia("videos", data.videoFileName, data.videoBase64);
     }
 
     if (data.thumbnailBase64 && data.thumbnailFileName) {
@@ -239,8 +235,15 @@ export const saveVideoAdminServerFn = createServerFn({ method: "POST" })
       finalThumbnailUrl = "/assets/student-affairs-reference.jpg";
     }
 
-    if (!finalVideoUrl) {
-      finalVideoUrl = "/assets/campus_loop_video.mp4";
+    if (!finalVideoUrl && data.id) {
+      const existing = store.videos.find((v) => v.id === data.id);
+      if (existing?.video_url && existing.video_url !== "/assets/campus_loop_video.mp4") {
+        finalVideoUrl = existing.video_url;
+      }
+    }
+
+    if (!finalVideoUrl || finalVideoUrl === "/assets/campus_loop_video.mp4") {
+      throw new Error("Please upload a valid video file.");
     }
 
     const now = new Date().toISOString();

@@ -133,4 +133,26 @@ describe("App routing", () => {
     expect(store.dean.name).toContain("Dr.");
     expect(store.dean.email).toContain("@gnits.ac.in");
   });
+
+  it("signs and verifies admin sessions using Web Crypto HMAC-SHA256", async () => {
+    process.env["ADMIN_SESSION_SECRET"] = "unit-test-admin-secret-key-12345";
+    const { signSession, verifySession } = await import("@/lib/admin-session.server");
+
+    const token = await signSession("studentcouncil");
+    expect(token).toBeDefined();
+    expect(token).toContain(".");
+
+    const verified = await verifySession(token);
+    expect(verified).not.toBeNull();
+    expect(verified?.username).toBe("studentcouncil");
+
+    // Tampered token test
+    const tampered = token.slice(0, -3) + "xyz";
+    const tamperedResult = await verifySession(tampered);
+    expect(tamperedResult).toBeNull();
+
+    // Invalid format test
+    expect(await verifySession("invalid-token-without-dot")).toBeNull();
+    expect(await verifySession(undefined)).toBeNull();
+  });
 });

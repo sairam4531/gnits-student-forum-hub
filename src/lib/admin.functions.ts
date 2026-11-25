@@ -217,8 +217,10 @@ export const getAdminForumEventsServerFn = createServerFn({ method: "GET" })
 
     // 1. Primary: Fetch authoritative records from Supabase
     try {
-      if (process.env["SUPABASE_SERVICE_ROLE_KEY"]) {
-        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { supabaseAdmin, hasSupabaseAdminConfig } = await import(
+        "@/integrations/supabase/client.server"
+      );
+      if (hasSupabaseAdminConfig()) {
         const { data: events, error } = await supabaseAdmin
           .from("student_forum_events")
           .select("*")
@@ -282,8 +284,10 @@ export const getAllAdminEventsServerFn = createServerFn({ method: "GET" }).handl
 
   // 1. Primary: Load all authoritative records from Supabase
   try {
-    if (process.env["SUPABASE_SERVICE_ROLE_KEY"]) {
-      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { supabaseAdmin, hasSupabaseAdminConfig } = await import(
+      "@/integrations/supabase/client.server"
+    );
+    if (hasSupabaseAdminConfig()) {
       const { data: events, error } = await supabaseAdmin
         .from("student_forum_events")
         .select("*")
@@ -325,8 +329,10 @@ export const deleteAdminEventServerFn = createServerFn({ method: "POST" })
     await saveEventsStoreAsync(remaining);
 
     try {
-      if (process.env["SUPABASE_SERVICE_ROLE_KEY"]) {
-        const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { supabaseAdmin, hasSupabaseAdminConfig } = await import(
+        "@/integrations/supabase/client.server"
+      );
+      if (hasSupabaseAdminConfig()) {
         await supabaseAdmin.from("student_forum_events").delete().eq("id", data.id);
       }
     } catch (err) {

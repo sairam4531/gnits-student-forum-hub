@@ -135,13 +135,20 @@ function saveDeletedTracker(tracker: DeletedTracker): void {
 // CLIENT HOMEPAGE STORE
 // -------------------------------------------------------------
 export function sanitizeVideoRecord(v: HomepageVideo): HomepageVideo {
+  const url = v.video_url?.trim() || "";
   const isInvalidUrl =
-    !v.video_url ||
-    v.video_url.includes("ForBiggerBlazes");
+    !url ||
+    url.includes("ForBiggerBlazes") ||
+    url === "/assets/campus_loop_video.mp4" ||
+    (!url.startsWith("data:") &&
+      !url.startsWith("blob:") &&
+      !url.startsWith("/") &&
+      !url.startsWith("http://") &&
+      !url.startsWith("https://"));
 
   return {
     ...v,
-    video_url: isInvalidUrl ? "" : v.video_url,
+    video_url: isInvalidUrl ? "" : url,
     thumbnail_url: v.thumbnail_url || "/assets/student-affairs-reference.jpg",
   };
 }
@@ -503,10 +510,18 @@ export function mergeServerWithClient(serverData: HomepageDataStore): ClientHome
     lastUpdated: Date.now(),
   };
 
-  // Keep client storage refreshed with the verified merged state
+  // Keep client storage refreshed without exceeding the ~5MB localStorage quota on large base64 videos
   if (isClient()) {
     try {
-      localStorage.setItem(HOMEPAGE_KEY, JSON.stringify(result));
+      const cacheSafeResult: ClientHomepageData = {
+        ...result,
+        videos: result.videos.map((v) =>
+          v.video_url.startsWith("data:") && v.video_url.length > 500_000
+            ? { ...v, video_url: "" }
+            : v,
+        ),
+      };
+      localStorage.setItem(HOMEPAGE_KEY, JSON.stringify(cacheSafeResult));
     } catch {
       // ignore
     }

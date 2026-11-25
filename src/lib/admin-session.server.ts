@@ -49,8 +49,12 @@ function bufferToBase64Url(buf: ArrayBuffer): string {
   return Buffer.from(buf).toString("base64url");
 }
 
-function base64UrlToBuffer(b64url: string): Uint8Array {
-  return Buffer.from(b64url, "base64url");
+function base64UrlToBuffer(b64url: string): Uint8Array<ArrayBuffer> {
+  const buf = Buffer.from(b64url, "base64url");
+  const ab = new ArrayBuffer(buf.byteLength);
+  const u8 = new Uint8Array(ab);
+  u8.set(buf);
+  return u8;
 }
 
 function base64UrlDecode(b64url: string): string {
