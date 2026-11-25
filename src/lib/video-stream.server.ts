@@ -95,8 +95,12 @@ async function putMeta(meta: VideoStreamMetadata): Promise<void> {
 async function getMeta(id: string): Promise<VideoStreamMetadata | null> {
   const kv = getCloudflareKVNamespace();
   if (kv) {
-    const meta = await kv.get<VideoStreamMetadata>(metaKey(id), "json");
-    if (meta) return meta;
+    try {
+      const meta = await kv.get<VideoStreamMetadata>(metaKey(id), "json");
+      if (meta) return meta;
+    } catch (err) {
+      console.warn("Could not read video metadata from KV:", err);
+    }
   }
 
   try {
@@ -114,8 +118,12 @@ async function getMeta(id: string): Promise<VideoStreamMetadata | null> {
 async function getChunk(id: string, index: number): Promise<ArrayBuffer | null> {
   const kv = getCloudflareKVNamespace();
   if (kv) {
-    const buf = await kv.get<ArrayBuffer>(chunkKey(id, index), "arrayBuffer");
-    if (buf) return buf;
+    try {
+      const buf = await kv.get<ArrayBuffer>(chunkKey(id, index), "arrayBuffer");
+      if (buf) return buf;
+    } catch (err) {
+      console.warn("Could not read video chunk from KV:", err);
+    }
   }
 
   try {

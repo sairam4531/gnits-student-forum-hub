@@ -193,6 +193,9 @@ export function saveHomepageStore(data: HomepageDataStore): void {
   }
 }
 
+const DEFAULT_CLOUDFLARE_ACCOUNT_ID = "f268748965c0561933f524c9983a8f01";
+const DEFAULT_CLOUDFLARE_KV_NAMESPACE_ID = "354e86ab39ec47c7b5f4578b4a79ce6a";
+
 export interface CloudflareKVBinding {
   get: <T = unknown>(
     key: string,
@@ -200,6 +203,130 @@ export interface CloudflareKVBinding {
   ) => Promise<T | null>;
   put: (key: string, value: string | ArrayBuffer | ArrayBufferView) => Promise<void>;
   delete?: (key: string) => Promise<void>;
+}
+
+interface EnvContainer {
+  KV?: unknown;
+  [key: string]: unknown;
+}
+
+function readServerEnvVar(name: string): string | undefined {
+  const g = globalThis as unknown as {
+    __env__?: EnvContainer;
+    __cloudflareEnv?: EnvContainer;
+    env?: EnvContainer;
+  };
+  const candidates = [
+    typeof process !== "undefined" ? process.env?.[name] : undefined,
+    g.__env__?.[name],
+    g.__cloudflareEnv?.[name],
+    g.env?.[name],
+  ];
+  for (const val of candidates) {
+    if (typeof val === "string" && val.trim().length > 0) {
+      return val.trim();
+    }
+  }
+  return undefined;
+}
+
+function toRequestBody(
+  value: string | ArrayBuffer | ArrayBufferView,
+): { body: BodyInit; contentType: string } {
+  if (typeof value === "string") {
+    return { body: value, contentType: "text/plain; charset=utf-8" };
+  }
+  if (value instanceof ArrayBuffer) {
+    const copy = new Uint8Array(value.byteLength);
+    copy.set(new Uint8Array(value));
+    return { body: copy, contentType: "application/octet-stream" };
+  }
+  const view = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  const copy = new Uint8Array(view.byteLength);
+  copy.set(view);
+  return { body: copy, contentType: "application/octet-stream" };
+}
+
+let cachedKvRestKey = "";
+let cachedKvRestClient: CloudflareKVBinding | null = null;
+
+/**
+ * Create a Cloudflare KV REST API adapter matching the Worker KV binding interface
+ * so external serverless deployments (such as Vercel) read and write the same store.
+ */
+function createCloudflareKvRestClient(
+  accountId: string,
+  namespaceId: string,
+  apiToken: string,
+): CloudflareKVBinding {
+  const cacheKey = `${accountId}:${namespaceId}:${apiToken}`;
+  if (cachedKvRestClient && cachedKvRestKey === cacheKey) {
+    return cachedKvRestClient;
+  }
+
+  const keyUrl = (key: string) =>
+    `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/storage/kv/namespaces/${encodeURIComponent(namespaceId)}/values/${encodeURIComponent(key)}`;
+
+  const client: CloudflareKVBinding = {
+    async get<T = unknown>(
+      key: string,
+      type: "json" | "text" | "arrayBuffer" | "stream",
+    ): Promise<T | null> {
+      const response = await fetch(keyUrl(key), {
+        method: "GET",
+        headers: { Authorization: `Bearer ${apiToken}` },
+      });
+      if (response.status === 404) {
+        return null;
+      }
+      if (!response.ok) {
+        throw new Error(`Cloudflare KV REST GET failed (HTTP ${response.status})`);
+      }
+      if (type === "json") {
+        const text = await response.text();
+        return text ? (JSON.parse(text) as T) : null;
+      }
+      if (type === "text") {
+        return (await response.text()) as T;
+      }
+      if (type === "arrayBuffer") {
+        return (await response.arrayBuffer()) as T;
+      }
+      return (response.body as T) ?? null;
+    },
+
+    async put(key: string, value: string | ArrayBuffer | ArrayBufferView): Promise<void> {
+      const { body, contentType } = toRequestBody(value);
+      const response = await fetch(keyUrl(key), {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": contentType,
+        },
+        body,
+      });
+      if (!response.ok) {
+        throw new Error(`Cloudflare KV REST PUT failed (HTTP ${response.status})`);
+      }
+    },
+
+    async delete(key: string): Promise<void> {
+      const response = await fetch(keyUrl(key), {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${apiToken}` },
+      });
+      if (response.status === 404) {
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(`Cloudflare KV REST DELETE failed (HTTP ${response.status})`);
+      }
+    },
+  };
+
+  cachedKvRestKey = cacheKey;
+  cachedKvRestClient = client;
+  return client;
 }
 
 export function getCloudflareKVNamespace(): CloudflareKVBinding | null {
@@ -220,6 +347,15 @@ export function getCloudflareKVNamespace(): CloudflareKVBinding | null {
   if (kv && typeof kv.get === "function" && typeof kv.put === "function") {
     return kv;
   }
+
+  const apiToken = readServerEnvVar("CLOUDFLARE_API_TOKEN");
+  if (apiToken) {
+    const accountId = readServerEnvVar("CLOUDFLARE_ACCOUNT_ID") || DEFAULT_CLOUDFLARE_ACCOUNT_ID;
+    const namespaceId =
+      readServerEnvVar("CLOUDFLARE_KV_NAMESPACE_ID") || DEFAULT_CLOUDFLARE_KV_NAMESPACE_ID;
+    return createCloudflareKvRestClient(accountId, namespaceId, apiToken);
+  }
+
   return null;
 }
 
@@ -259,17 +395,20 @@ export async function saveHomepageStoreAsync(data: HomepageDataStore): Promise<v
     }
   } catch (err) {
     console.warn("Could not persist homepage store to Cloudflare KV:", err);
-    throw new Error(
-      "Could not save homepage data to cloud storage. If uploading a video, try a smaller file under 15 MB.",
-    );
+    throw new Error("Could not save homepage data to cloud storage. Please try again.");
   }
 }
 
 export function saveUploadedMedia(subfolder: string, fileName: string, base64Data: string): string {
-  // On Cloudflare Workers or serverless edge, runtime static files cannot be served via /uploads/.
+  // On Cloudflare Workers or serverless hosts (e.g. Vercel), runtime static files cannot be served via /uploads/.
   // Returning the self-contained data URL ensures the media renders immediately in all browsers
   // and persists seamlessly in KV.
-  if (getCloudflareKVNamespace() || typeof process === "undefined" || !process.cwd) {
+  if (
+    getCloudflareKVNamespace() ||
+    readServerEnvVar("VERCEL") ||
+    typeof process === "undefined" ||
+    !process.cwd
+  ) {
     return base64Data;
   }
 

@@ -26,7 +26,7 @@ function getAdminSessionSecret(): string {
 
   if (!secret) {
     throw new Error(
-      "ADMIN_SESSION_SECRET is not configured on the server. Please set it as a Cloudflare Worker Secret.",
+      "ADMIN_SESSION_SECRET is not configured on the server. Please set it in your deployment environment variables or secrets.",
     );
   }
   return secret;

@@ -185,4 +185,64 @@ describe("App routing", () => {
     });
     expect(spoofedSearch.mode).toBeUndefined();
   });
+
+  it("bridges Vercel / non-Worker environments to Cloudflare KV via REST API when CLOUDFLARE_API_TOKEN is set", async () => {
+    const { getCloudflareKVNamespace } = await import("@/lib/local-homepage-store");
+
+    const prevToken = process.env["CLOUDFLARE_API_TOKEN"];
+    const prevAccount = process.env["CLOUDFLARE_ACCOUNT_ID"];
+    const prevNamespace = process.env["CLOUDFLARE_KV_NAMESPACE_ID"];
+    const prevFetch = globalThis.fetch;
+
+    try {
+      delete process.env["CLOUDFLARE_API_TOKEN"];
+      expect(getCloudflareKVNamespace()).toBeNull();
+
+      process.env["CLOUDFLARE_API_TOKEN"] = "cf-test-token-123";
+      process.env["CLOUDFLARE_ACCOUNT_ID"] = "acc-test-1";
+      process.env["CLOUDFLARE_KV_NAMESPACE_ID"] = "ns-test-2";
+
+      const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const headers = init?.headers as Record<string, string> | undefined;
+        expect(headers?.["Authorization"]).toBe("Bearer cf-test-token-123");
+
+        if (init?.method === "GET" && url.endsWith("/values/homepage_store")) {
+          return new Response(JSON.stringify({ videos: [{ id: "v1" }] }), { status: 200 });
+        }
+        if (init?.method === "GET" && url.endsWith("/values/missing_key")) {
+          return new Response("Not Found", { status: 404 });
+        }
+        if (init?.method === "PUT" && url.endsWith("/values/video_chunk%3Av1%3A0")) {
+          return new Response(null, { status: 200 });
+        }
+        if (init?.method === "DELETE" && url.endsWith("/values/old_key")) {
+          return new Response(null, { status: 200 });
+        }
+        return new Response("Unexpected", { status: 500 });
+      });
+      globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+      const kv = getCloudflareKVNamespace();
+      expect(kv).not.toBeNull();
+
+      const loaded = await kv!.get<{ videos: { id: string }[] }>("homepage_store", "json");
+      expect(loaded?.videos[0]?.id).toBe("v1");
+
+      const missing = await kv!.get("missing_key", "json");
+      expect(missing).toBeNull();
+
+      await kv!.put("video_chunk:v1:0", new Uint8Array([1, 2, 3]).buffer);
+      await kv!.delete?.("old_key");
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+    } finally {
+      globalThis.fetch = prevFetch;
+      if (prevToken === undefined) delete process.env["CLOUDFLARE_API_TOKEN"];
+      else process.env["CLOUDFLARE_API_TOKEN"] = prevToken;
+      if (prevAccount === undefined) delete process.env["CLOUDFLARE_ACCOUNT_ID"];
+      else process.env["CLOUDFLARE_ACCOUNT_ID"] = prevAccount;
+      if (prevNamespace === undefined) delete process.env["CLOUDFLARE_KV_NAMESPACE_ID"];
+      else process.env["CLOUDFLARE_KV_NAMESPACE_ID"] = prevNamespace;
+    }
+  });
 });
