@@ -3,14 +3,9 @@ import { useState, useEffect } from "react";
 import {
   ArrowLeft,
   Home,
-  Calendar,
-  ShieldCheck,
-  Eye,
-  FileSpreadsheet,
 } from "lucide-react";
 import { StudentAffairsHeader } from "@/components/StudentAffairsHeader";
 import { ConductedEventsView } from "@/components/ConductedEventsView";
-import { AdminEventsView } from "@/components/AdminEventsView";
 import { EventsClubsDrawer } from "@/components/EventsClubsDrawer";
 import { forums, type ForumClub } from "@/lib/student-forums";
 import {
@@ -54,7 +49,6 @@ function DedicatedEventPage() {
   // Admin authentication state
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminProfile, setAdminProfile] = useState<AdminProfileRecord | null>(null);
-  const [adminViewMode, setAdminViewMode] = useState<"admin" | "student">("admin");
 
   const clubSlug = search.club || "technical-events";
   const forumName = search.forum || "ISTE";
@@ -235,47 +229,6 @@ function DedicatedEventPage() {
               {forumName}
             </span>
           </div>
-
-          {/* Action Buttons */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            {isAdmin && (
-              <div className="hidden sm:inline-flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs font-semibold">
-                <button
-                  type="button"
-                  onClick={() => setAdminViewMode("admin")}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md transition-all cursor-pointer ${
-                    adminViewMode === "admin"
-                      ? "bg-white text-slate-900 shadow-xs font-bold"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  <ShieldCheck className="h-3.5 w-3.5 text-orange-600" />
-                  <span>Admin Reports</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAdminViewMode("student")}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md transition-all cursor-pointer ${
-                    adminViewMode === "student"
-                      ? "bg-white text-slate-900 shadow-xs font-bold"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  <Eye className="h-3.5 w-3.5 text-slate-500" />
-                  <span>Student View</span>
-                </button>
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={() => setIsDrawerOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold border border-orange-200 transition-colors cursor-pointer"
-            >
-              <Calendar className="h-3.5 w-3.5" />
-              <span>Switch Event / Club</span>
-            </button>
-          </div>
         </div>
       </div>
 
@@ -283,21 +236,11 @@ function DedicatedEventPage() {
       <main className="flex-1 py-8 sm:py-10">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
           <div className="rounded-3xl bg-white p-6 sm:p-8 md:p-10 border border-slate-200 shadow-xl animate-in fade-in duration-200">
-            {isAdmin && adminViewMode === "admin" ? (
-              /* For logged in Admin: Show Submissions, Report Downloads & Forum Excel */
-              <AdminEventsView
-                club={selectedClub}
-                forumName={forumName}
-                forumSlug={forumSlug}
-              />
-            ) : (
-              /* For public students or student preview mode: Conducted Events and Add Event */
-              <ConductedEventsView
-                club={selectedClub}
-                forumName={forumName}
-                forumSlug={forumSlug}
-              />
-            )}
+            <ConductedEventsView
+              club={selectedClub}
+              forumName={forumName}
+              forumSlug={forumSlug}
+            />
           </div>
         </div>
       </main>
