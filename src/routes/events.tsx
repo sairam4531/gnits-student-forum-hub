@@ -23,9 +23,10 @@ import { getClientEvents, saveClientEvent, getClientAdminEvents } from "@/lib/cl
 import * as XLSX from "xlsx";
 
 interface EventSearchState {
-  club?: string;
-  forum?: string;
-  slug?: string;
+  club?: string | undefined;
+  forum?: string | undefined;
+  slug?: string | undefined;
+  mode?: "admin" | undefined;
 }
 
 export const Route = createFileRoute("/events")({
@@ -34,6 +35,7 @@ export const Route = createFileRoute("/events")({
       club: (search["club"] as string) || "technical-events",
       forum: (search["forum"] as string) || "ISTE",
       slug: (search["slug"] as string) || "iste",
+      mode: search["mode"] === "admin" ? "admin" : undefined,
     };
   },
   component: DedicatedEventPage,
@@ -46,32 +48,58 @@ function DedicatedEventPage() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [recentEvents, setRecentEvents] = useState<PublicEventRecord[]>([]);
 
-  // Admin authentication state
+  // Admin authentication state (only activated when opened explicitly from Admin Portal)
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminProfile, setAdminProfile] = useState<AdminProfileRecord | null>(null);
 
   const clubSlug = search.club || "technical-events";
   const forumName = search.forum || "ISTE";
   const forumSlug = search.slug || "iste";
+  const wantsAdminView = search.mode === "admin";
 
   // Match the club or fallback to default
   const selectedClub: ForumClub =
     forums.find((c) => c.slug === clubSlug) || forums[0]!;
 
-  // Check admin session and load events
+  // Check admin session only when navigated from Admin Portal (?mode=admin)
   useEffect(() => {
-    async function initPage() {
+    if (!wantsAdminView) {
+      setIsAdmin(false);
+      setAdminProfile(null);
+      return;
+    }
+
+    let cancelled = false;
+    async function verifyAdminMode() {
       try {
         const session = await getAdminSessionServerFn();
-        if (session.authenticated) {
+        if (!cancelled && session.authenticated) {
           setIsAdmin(true);
           const profile = await getAdminProfileServerFn();
-          setAdminProfile(profile);
+          if (!cancelled) {
+            setAdminProfile(profile);
+          }
+        } else if (!cancelled) {
+          setIsAdmin(false);
+          setAdminProfile(null);
         }
       } catch {
-        // Not admin or guest
+        if (!cancelled) {
+          setIsAdmin(false);
+          setAdminProfile(null);
+        }
       }
+    }
 
+    verifyAdminMode();
+    return () => {
+      cancelled = true;
+    };
+  }, [wantsAdminView]);
+
+  // Load recent events for drawer navigation
+  useEffect(() => {
+    async function loadRecentEvents() {
       try {
         const events = await getAllPublicEventsServerFn();
         if (events && events.length > 0) {
@@ -93,7 +121,7 @@ function DedicatedEventPage() {
       }
     }
 
-    initPage();
+    loadRecentEvents();
   }, []);
 
   const handleSelectForum = (
@@ -107,6 +135,7 @@ function DedicatedEventPage() {
         club: club.slug,
         forum: newForumName,
         slug: newForumSlug,
+        ...(isAdmin ? { mode: "admin" as const } : {}),
       },
     });
   };

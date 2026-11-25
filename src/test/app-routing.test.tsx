@@ -155,4 +155,34 @@ describe("App routing", () => {
     expect(await verifySession("invalid-token-without-dot")).toBeNull();
     expect(await verifySession(undefined)).toBeNull();
   });
+
+  it("keeps /events in Student Portal mode unless ?mode=admin is explicitly provided", async () => {
+    const { Route: EventsRoute } = await import("@/routes/events");
+    const validateSearch = EventsRoute.options.validateSearch as (
+      search: Record<string, unknown>,
+    ) => { club?: string; forum?: string; slug?: string; mode?: string };
+
+    const defaultSearch = validateSearch({
+      club: "technical-events",
+      forum: "ISTE",
+      slug: "iste",
+    });
+    expect(defaultSearch.mode).toBeUndefined();
+
+    const adminSearch = validateSearch({
+      club: "technical-events",
+      forum: "ISTE",
+      slug: "iste",
+      mode: "admin",
+    });
+    expect(adminSearch.mode).toBe("admin");
+
+    const spoofedSearch = validateSearch({
+      club: "technical-events",
+      forum: "ISTE",
+      slug: "iste",
+      mode: "anything-else",
+    });
+    expect(spoofedSearch.mode).toBeUndefined();
+  });
 });

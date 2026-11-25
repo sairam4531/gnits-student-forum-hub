@@ -496,6 +496,7 @@ function AdminPage() {
               club: club.slug,
               forum: forumName,
               slug: forumSlug,
+              mode: "admin",
             },
           });
         }}
