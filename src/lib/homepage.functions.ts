@@ -300,8 +300,23 @@ export const deleteVideoAdminServerFn = createServerFn({ method: "POST" })
     }
 
     const store = await getHomepageStoreAsync();
+    const removed = store.videos.find((v) => v.id === data.id);
     store.videos = store.videos.filter((v) => v.id !== data.id);
     await saveHomepageStoreAsync(store);
+
+    if (removed?.video_url) {
+      try {
+        const { extractCampusVideoId, deleteStoredVideoChunks } = await import(
+          "@/lib/video-stream.server"
+        );
+        const streamId = extractCampusVideoId(removed.video_url);
+        if (streamId) {
+          await deleteStoredVideoChunks(streamId);
+        }
+      } catch (err) {
+        console.warn("Could not delete stored video chunks:", err);
+      }
+    }
     return { success: true };
   });
 

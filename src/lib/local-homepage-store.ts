@@ -193,10 +193,16 @@ export function saveHomepageStore(data: HomepageDataStore): void {
   }
 }
 
-export function getCloudflareKVNamespace(): {
-  get: <T = unknown>(key: string, type: "json" | "text") => Promise<T | null>;
-  put: (key: string, value: string) => Promise<void>;
-} | null {
+export interface CloudflareKVBinding {
+  get: <T = unknown>(
+    key: string,
+    type: "json" | "text" | "arrayBuffer" | "stream",
+  ) => Promise<T | null>;
+  put: (key: string, value: string | ArrayBuffer | ArrayBufferView) => Promise<void>;
+  delete?: (key: string) => Promise<void>;
+}
+
+export function getCloudflareKVNamespace(): CloudflareKVBinding | null {
   const g = globalThis as unknown as {
     __env__?: { KV?: any };
     __cloudflareEnv?: { KV?: any };

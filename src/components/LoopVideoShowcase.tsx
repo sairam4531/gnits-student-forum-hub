@@ -9,6 +9,7 @@ import {
   Pencil,
 } from "lucide-react";
 import type { HomepageVideo, HomepagePhoto } from "@/lib/local-homepage-store";
+import { getLocalVideoBlobUrl } from "@/lib/video-storage";
 
 interface LoopVideoShowcaseProps {
   video: HomepageVideo | null;
@@ -30,6 +31,8 @@ export function LoopVideoShowcase({
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [playbackFailed, setPlaybackFailed] = useState(false);
+  const [localFallbackUrl, setLocalFallbackUrl] = useState<string | null>(null);
+  const [serverError, setServerError] = useState(false);
 
   // Authoritative server-provided video URL (only active when admin has added a video)
   const serverVideoUrl =
@@ -41,15 +44,64 @@ export function LoopVideoShowcase({
       ? video.video_url.trim()
       : null;
 
-  // Active video URL is strictly the user/admin added video. No default background video is forced.
-  const activeVideoUrl = serverVideoUrl;
+  // Use server video URL unless it failed or is absent, falling back cleanly to local IndexedDB video
+  const activeVideoUrl = (!serverError && serverVideoUrl) || localFallbackUrl || null;
 
-  // Reset error state if video prop updates
+  // Reset error state if video prop updates, and load IndexedDB fallback when needed
   useEffect(() => {
     setPlaybackFailed(false);
-  }, [video?.id, video?.video_url]);
+    setServerError(false);
+
+    if (!serverVideoUrl) {
+      let active = true;
+      getLocalVideoBlobUrl().then((url) => {
+        if (active && url) setLocalFallbackUrl(url);
+      });
+      return () => {
+        active = false;
+      };
+    }
+    return undefined;
+  }, [video?.id, video?.video_url, serverVideoUrl]);
+
+  // Listen for live video updates broadcast across tabs
+  useEffect(() => {
+    let channel: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+        channel = new BroadcastChannel("gnits_video_broadcast");
+        channel.onmessage = (ev) => {
+          if (ev.data?.type === "VIDEO_UPDATED") {
+            setPlaybackFailed(false);
+            setServerError(false);
+            getLocalVideoBlobUrl().then((url) => {
+              if (url) setLocalFallbackUrl(url);
+            });
+          }
+        };
+      }
+    } catch {
+      // ignore
+    }
+    return () => {
+      channel?.close();
+    };
+  }, []);
 
   const handleVideoError = () => {
+    if (serverVideoUrl && !serverError) {
+      setServerError(true);
+      getLocalVideoBlobUrl().then((url) => {
+        if (url) {
+          setLocalFallbackUrl(url);
+          setPlaybackFailed(false);
+        } else {
+          console.warn("Campus video stream unavailable.");
+          setPlaybackFailed(true);
+        }
+      });
+      return;
+    }
     console.warn("Campus video stream unavailable.");
     setPlaybackFailed(true);
   };

@@ -16,7 +16,11 @@ import {
   setFeaturedVideoAdminServerFn,
 } from "@/lib/homepage.functions";
 import type { HomepageVideo } from "@/lib/local-homepage-store";
-import { saveLocalVideoBlob, clearLocalVideoBlob } from "@/lib/video-storage";
+import {
+  saveLocalVideoBlob,
+  clearLocalVideoBlob,
+  getLocalVideoBlobUrl,
+} from "@/lib/video-storage";
 import {
   saveClientVideo,
   deleteClientVideo,
@@ -27,7 +31,8 @@ interface CollegeVideosManageProps {
   onRefresh: () => Promise<void>;
 }
 
-const MAX_VIDEO_FILE_BYTES = 15 * 1024 * 1024; // 15 MB
+const SMALL_INLINE_VIDEO_BYTES = 1.5 * 1024 * 1024; // 1.5 MB
+const VIDEO_CHUNK_BYTES = 2.5 * 1024 * 1024; // 2.5 MB per chunk (safe under Vercel 4.5 MB & Cloudflare KV limits)
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -59,16 +64,84 @@ function isUsableVideoSource(url?: string | null): boolean {
   );
 }
 
+async function uploadVideoInChunks(
+  file: File,
+  streamId: string,
+  onProgress: (percent: number) => void,
+): Promise<string> {
+  const totalSize = file.size;
+  const totalChunks = Math.max(1, Math.ceil(totalSize / VIDEO_CHUNK_BYTES));
+  const contentType = file.type || "video/mp4";
+
+  for (let index = 0; index < totalChunks; index++) {
+    const start = index * VIDEO_CHUNK_BYTES;
+    const end = Math.min(start + VIDEO_CHUNK_BYTES, totalSize);
+    const slice = file.slice(start, end);
+
+    const chunkParams = new URLSearchParams({
+      action: "chunk",
+      id: streamId,
+      index: String(index),
+      total: String(totalChunks),
+      size: String(totalSize),
+      chunkSize: String(VIDEO_CHUNK_BYTES),
+      type: contentType,
+    });
+
+    const chunkRes = await fetch(`/api/campus-video?${chunkParams.toString()}`, {
+      method: "POST",
+      body: slice,
+      headers: { "Content-Type": "application/octet-stream" },
+      credentials: "include",
+    });
+
+    if (!chunkRes.ok) {
+      let msg = `Video upload failed on part ${index + 1}/${totalChunks} (HTTP ${chunkRes.status}).`;
+      try {
+        const errJson = (await chunkRes.json()) as { error?: string };
+        if (errJson.error) msg = errJson.error;
+      } catch {
+        // ignore JSON parse error
+      }
+      throw new Error(msg);
+    }
+
+    onProgress(Math.round(((index + 1) / totalChunks) * 100));
+  }
+
+  const completeParams = new URLSearchParams({
+    action: "complete",
+    id: streamId,
+    total: String(totalChunks),
+    size: String(totalSize),
+    chunkSize: String(VIDEO_CHUNK_BYTES),
+    type: contentType,
+    name: file.name,
+  });
+
+  const completeRes = await fetch(`/api/campus-video?${completeParams.toString()}`, {
+    method: "POST",
+    credentials: "include",
+  });
+
+  if (!completeRes.ok) {
+    throw new Error(`Failed to finalize video upload (HTTP ${completeRes.status}).`);
+  }
+
+  return `/api/campus-video?id=${encodeURIComponent(streamId)}`;
+}
+
 export function CollegeVideosManage({ videos, onRefresh }: CollegeVideosManageProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingVideo, setEditingVideo] = useState<HomepageVideo | null>(null);
 
-  // Form State: file upload only
+  // Form State: file upload only (no size limit)
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoFileName, setVideoFileName] = useState<string | null>(null);
   const [videoBlobPreview, setVideoBlobPreview] = useState<string | null>(null);
 
   const [saving, setSaving] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -79,34 +152,34 @@ export function CollegeVideosManage({ videos, onRefresh }: CollegeVideosManagePr
     setVideoFile(null);
     setVideoFileName(null);
     setVideoBlobPreview(null);
+    setUploadProgress(null);
     setError(null);
     setSuccessMsg(null);
     setIsModalOpen(true);
   };
 
-  const handleOpenEdit = (v: HomepageVideo) => {
+  const handleOpenEdit = async (v: HomepageVideo) => {
     setEditingVideo(v);
     setVideoFile(null);
     setVideoFileName(null);
-    setVideoBlobPreview(isUsableVideoSource(v.video_url) ? v.video_url : null);
+    setUploadProgress(null);
     setError(null);
     setSuccessMsg(null);
     setIsModalOpen(true);
+
+    if (isUsableVideoSource(v.video_url)) {
+      setVideoBlobPreview(v.video_url);
+    } else {
+      const localUrl = await getLocalVideoBlobUrl();
+      setVideoBlobPreview(localUrl);
+    }
   };
 
   const handleVideoFile = (file: File) => {
     const isVideoType =
-      file.type.startsWith("video/") || /\.(mp4|webm|mov|m4v|ogg)$/i.test(file.name);
+      file.type.startsWith("video/") || /\.(mp4|webm|mov|m4v|ogg|avi|mkv)$/i.test(file.name);
     if (!isVideoType) {
-      setError("Please select a valid video file (MP4, WebM, or MOV).");
-      return;
-    }
-
-    if (file.size > MAX_VIDEO_FILE_BYTES) {
-      const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
-      setError(
-        `Video file is ${sizeMb} MB, which exceeds the 15 MB cloud upload limit. Please upload a smaller video file.`,
-      );
+      setError("Please select a valid video file (MP4, WebM, MOV).");
       return;
     }
 
@@ -133,39 +206,75 @@ export function CollegeVideosManage({ videos, onRefresh }: CollegeVideosManagePr
     }
 
     setSaving(true);
+    setUploadProgress(null);
 
     try {
       if (videoFile) {
         const cleanTitle = videoFile.name.replace(/\.[^/.]+$/, "") || "GNITS Campus Video";
         const videoId = editingVideo?.id || `video-${Date.now()}`;
-        const base64 = await readFileAsDataUrl(videoFile);
 
-        await saveVideoAdminServerFn({
-          data: {
-            id: editingVideo ? editingVideo.id : undefined,
+        // Always keep an IndexedDB copy so large videos also play smoothly in browser fallback
+        await saveLocalVideoBlob(videoFile, videoFile.name);
+
+        if (videoFile.size <= SMALL_INLINE_VIDEO_BYTES) {
+          const base64 = await readFileAsDataUrl(videoFile);
+
+          await saveVideoAdminServerFn({
+            data: {
+              id: editingVideo ? editingVideo.id : undefined,
+              title: cleanTitle,
+              videoBase64: base64,
+              videoFileName: videoFile.name,
+              is_active: true,
+              is_featured: true,
+              display_order: 1,
+            },
+          });
+
+          saveClientVideo({
+            id: videoId,
             title: cleanTitle,
-            videoBase64: base64,
-            videoFileName: videoFile.name,
+            description: "",
+            video_url: base64.length < 500 * 1024 ? base64 : "",
+            thumbnail_url: "",
             is_active: true,
             is_featured: true,
             display_order: 1,
-          },
-        });
+            created_at: editingVideo?.created_at || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+        } else {
+          // Large video: upload in 2.5 MB chunks with no overall file size limit
+          setUploadProgress(0);
+          const streamId = `vid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          const streamUrl = await uploadVideoInChunks(videoFile, streamId, (pct) => {
+            setUploadProgress(pct);
+          });
 
-        // Cache locally in IndexedDB as a companion copy for offline/fast playback
-        await saveLocalVideoBlob(videoFile, videoFile.name);
-        saveClientVideo({
-          id: videoId,
-          title: cleanTitle,
-          description: "",
-          video_url: base64.length < 500 * 1024 ? base64 : "",
-          thumbnail_url: "",
-          is_active: true,
-          is_featured: true,
-          display_order: 1,
-          created_at: editingVideo?.created_at || new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
+          await saveVideoAdminServerFn({
+            data: {
+              id: editingVideo ? editingVideo.id : undefined,
+              title: cleanTitle,
+              video_url: streamUrl,
+              is_active: true,
+              is_featured: true,
+              display_order: 1,
+            },
+          });
+
+          saveClientVideo({
+            id: videoId,
+            title: cleanTitle,
+            description: "",
+            video_url: streamUrl,
+            thumbnail_url: "",
+            is_active: true,
+            is_featured: true,
+            display_order: 1,
+            created_at: editingVideo?.created_at || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+        }
       } else if (editingVideo) {
         await saveVideoAdminServerFn({
           data: {
@@ -193,6 +302,7 @@ export function CollegeVideosManage({ videos, onRefresh }: CollegeVideosManagePr
       );
     } finally {
       setSaving(false);
+      setUploadProgress(null);
     }
   };
 
@@ -320,7 +430,7 @@ export function CollegeVideosManage({ videos, onRefresh }: CollegeVideosManagePr
         ))}
       </div>
 
-      {/* Upload College Video Modal - File Upload Only */}
+      {/* Upload College Video Modal - File Upload Only (No Size Limit) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
           <div className="w-full max-w-lg bg-white rounded-3xl p-6 sm:p-7 shadow-2xl border border-slate-200 max-h-[92vh] overflow-y-auto">
@@ -369,7 +479,7 @@ export function CollegeVideosManage({ videos, onRefresh }: CollegeVideosManagePr
                     {videoFileName ? videoFileName : "Click to Browse Video from Device"}
                   </span>
                   <span className="text-xs text-slate-500 mt-1">
-                    Select any college MP4/WebM video file (max 15 MB)
+                    Select any college MP4/WebM/MOV video file
                   </span>
                   <input
                     ref={videoFileInputRef}
@@ -419,7 +529,11 @@ export function CollegeVideosManage({ videos, onRefresh }: CollegeVideosManagePr
                   {saving ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      <span>Saving Video...</span>
+                      <span>
+                        {uploadProgress !== null
+                          ? `Uploading Video... ${uploadProgress}%`
+                          : "Saving Video..."}
+                      </span>
                     </>
                   ) : (
                     <span>Save College Video</span>

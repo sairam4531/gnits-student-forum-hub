@@ -25,6 +25,14 @@ const csrfMiddleware = createCsrfMiddleware({
   filter: (ctx) => ctx.handlerType === "serverFn",
 });
 
+const campusVideoMiddleware = createMiddleware().server(async ({ request, pathname, next }) => {
+  if (pathname === "/api/campus-video") {
+    const { handleCampusVideoRequest } = await import("./lib/video-stream.server");
+    return handleCampusVideoRequest(request);
+  }
+  return next();
+});
+
 // requestMiddleware runs on every request; functionMiddleware only on server functions, where
 // client sendContext is unvalidated input. Append to these arrays, never replace them.
 // Enabling Lovable Cloud adds functionMiddleware: [attachSupabaseAuth], the bearer token that
@@ -33,5 +41,5 @@ const csrfMiddleware = createCsrfMiddleware({
 // project did not intentionally replace it.
 export const startInstance = createStart(() => ({
   functionMiddleware: [attachSupabaseAuth],
-  requestMiddleware: [errorMiddleware, csrfMiddleware],
+  requestMiddleware: [errorMiddleware, campusVideoMiddleware, csrfMiddleware],
 }));
