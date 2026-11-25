@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { Route as AdminRoute } from "@/routes/admin";
+import { getAdminSessionServerFn } from "@/lib/admin.functions";
 
 class MockResizeObserver {
   observe() {}
@@ -89,5 +90,23 @@ describe("Admin Dashboard Simplified Layout", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /upload college video/i })).toBeTruthy();
     });
+  });
+
+  it("does not display or auto-fill admin credentials on the login page", async () => {
+    vi.mocked(getAdminSessionServerFn).mockResolvedValueOnce({
+      authenticated: false,
+      username: null,
+    });
+
+    const AdminComponent = (AdminRoute as unknown as { options: { component: React.ComponentType } })
+      .options.component;
+
+    render(<AdminComponent />);
+
+    expect(await screen.findByRole("button", { name: /sign in as admin/i })).toBeTruthy();
+    expect(screen.queryByText(/auto-fill demo credentials/i)).toBeNull();
+    expect(screen.queryByText(/default credentials/i)).toBeNull();
+    expect(screen.queryByText(/studentcouncil@1234/i)).toBeNull();
+    expect(screen.queryByPlaceholderText("studentcouncil")).toBeNull();
   });
 });

@@ -6,7 +6,6 @@ import {
   User,
   Eye,
   EyeOff,
-  Sparkles,
   Loader2,
   AlertCircle,
   X,
@@ -311,7 +310,7 @@ function AdminPage() {
                     required
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    placeholder="studentcouncil"
+                    placeholder="Enter admin username"
                     className="w-full rounded-xl border border-input bg-background pl-10 pr-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
@@ -359,24 +358,6 @@ function AdminPage() {
                     </>
                   )}
                 </button>
-              </div>
-
-              {/* Quick Fill Demo Credentials */}
-              <div className="pt-3 text-center">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setUsername("studentcouncil");
-                    setPassword("studentcouncil@1234");
-                  }}
-                  className="text-xs text-primary font-medium hover:underline inline-flex items-center gap-1 cursor-pointer"
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                  <span>Auto-fill Demo Credentials</span>
-                </button>
-                <p className="text-[11px] text-muted-foreground mt-1">
-                  Default credentials: <code>studentcouncil</code> / <code>studentcouncil@1234</code>
-                </p>
               </div>
             </form>
           </div>
