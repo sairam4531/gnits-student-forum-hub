@@ -147,14 +147,12 @@ export function DeanDetailsManage({ dean, onRefresh }: DeanDetailsManageProps) {
 
   return (
     <div className="space-y-6">
-      {/* Top Banner */}
-      <div className="pb-4 border-b border-slate-200">
-        <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-          Dean Details Management
+      {/* Centered Section Title matching Admin Dashboard */}
+      <div className="text-center mb-6">
+        <h2 className="text-2xl sm:text-3xl font-black text-[#0f2757] tracking-tight">
+          Dean Details
         </h2>
-        <p className="text-xs sm:text-sm text-slate-500">
-          Update the Dean's official name, academic designation, profile photo, and institutional office details displayed on the homepage.
-        </p>
+        <div className="w-14 h-1 bg-[#0f2757] mx-auto mt-2.5 rounded-full" />
       </div>
 
       {successMsg && (

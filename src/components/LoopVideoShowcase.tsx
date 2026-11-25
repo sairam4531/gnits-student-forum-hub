@@ -6,6 +6,7 @@ import {
   Minimize,
   ChevronDown,
   Video as VideoIcon,
+  Pencil,
 } from "lucide-react";
 import type { HomepageVideo, HomepagePhoto } from "@/lib/local-homepage-store";
 
@@ -15,11 +16,13 @@ interface LoopVideoShowcaseProps {
   onOpenGallery?: () => void;
   featuredPhotos?: HomepagePhoto[];
   onScrollToDean?: () => void;
+  onEditVideo?: () => void;
 }
 
 export function LoopVideoShowcase({
   video,
   onScrollToDean,
+  onEditVideo,
 }: LoopVideoShowcaseProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -172,43 +175,58 @@ export function LoopVideoShowcase({
         />
       )}
 
-      {/* Floating Sound & Fullscreen Controls in bottom-right corner - only when active video is playing */}
-      {!playbackFailed && Boolean(activeVideoUrl) && (
+      {/* Floating Sound, Fullscreen & optional Admin Edit Video controls in bottom-right corner */}
+      {((!playbackFailed && Boolean(activeVideoUrl)) || Boolean(onEditVideo)) && (
         <div className="absolute bottom-4 sm:bottom-6 right-4 sm:right-6 z-30 flex items-center gap-2.5">
-          {/* Sound Toggle Button */}
-          <button
-            type="button"
-            onClick={toggleMute}
-            className="inline-flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-full bg-black/60 hover:bg-black/85 backdrop-blur-md border border-white/25 text-white text-xs sm:text-sm font-bold shadow-2xl transition-all cursor-pointer hover:scale-105 active:scale-95"
-            title={isMuted ? "Click to enable sound" : "Sound is active"}
-          >
-            {isMuted ? (
-              <>
-                <VolumeX className="h-4 w-4 text-amber-300" />
-                <span className="text-amber-200">Unmute Sound</span>
-              </>
-            ) : (
-              <>
-                <Volume2 className="h-4 w-4 text-emerald-400" />
-                <span className="text-emerald-300">Sound On</span>
-              </>
-            )}
-          </button>
+          {!playbackFailed && Boolean(activeVideoUrl) && (
+            <>
+              {/* Sound Toggle Button */}
+              <button
+                type="button"
+                onClick={toggleMute}
+                className="inline-flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-full bg-black/60 hover:bg-black/85 backdrop-blur-md border border-white/25 text-white text-xs sm:text-sm font-bold shadow-2xl transition-all cursor-pointer hover:scale-105 active:scale-95"
+                title={isMuted ? "Click to enable sound" : "Sound is active"}
+              >
+                {isMuted ? (
+                  <>
+                    <VolumeX className="h-4 w-4 text-amber-300" />
+                    <span className="text-amber-200">Unmute Sound</span>
+                  </>
+                ) : (
+                  <>
+                    <Volume2 className="h-4 w-4 text-emerald-400" />
+                    <span className="text-emerald-300">Sound On</span>
+                  </>
+                )}
+              </button>
 
-          {/* Fullscreen Button */}
-          <button
-            type="button"
-            onClick={toggleFullscreen}
-            className="p-2 sm:p-2.5 rounded-full bg-black/60 hover:bg-black/85 backdrop-blur-md border border-white/25 text-white shadow-2xl transition-all cursor-pointer hover:scale-105 active:scale-95"
-            title={isFullscreen ? "Exit Fullscreen" : "Full Screen"}
-            aria-label="Fullscreen"
-          >
-            {isFullscreen ? (
-              <Minimize className="h-4 w-4 sm:h-5 sm:w-5" />
-            ) : (
-              <Maximize className="h-4 w-4 sm:h-5 sm:w-5" />
-            )}
-          </button>
+              {/* Fullscreen Button */}
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className="p-2 sm:p-2.5 rounded-full bg-black/60 hover:bg-black/85 backdrop-blur-md border border-white/25 text-white shadow-2xl transition-all cursor-pointer hover:scale-105 active:scale-95"
+                title={isFullscreen ? "Exit Fullscreen" : "Full Screen"}
+                aria-label="Fullscreen"
+              >
+                {isFullscreen ? (
+                  <Minimize className="h-4 w-4 sm:h-5 sm:w-5" />
+                ) : (
+                  <Maximize className="h-4 w-4 sm:h-5 sm:w-5" />
+                )}
+              </button>
+            </>
+          )}
+
+          {onEditVideo && (
+            <button
+              type="button"
+              onClick={onEditVideo}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#0f2757] hover:bg-[#1e3a8a] text-white text-xs sm:text-sm font-bold shadow-lg transition-all cursor-pointer"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              <span>Edit Video</span>
+            </button>
+          )}
         </div>
       )}
 
