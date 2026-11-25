@@ -284,11 +284,17 @@ export async function handleCampusVideoRequest(request: Request): Promise<Respon
     return new Response("Video not found", { status: 404 });
   }
 
+  const etag = `"${meta.id}-${meta.totalSize}"`;
   const baseHeaders: Record<string, string> = {
     "Content-Type": meta.contentType || "video/mp4",
     "Accept-Ranges": "bytes",
-    "Cache-Control": "public, max-age=3600",
+    "Cache-Control": "public, max-age=31536000, immutable",
+    ETag: etag,
   };
+
+  if (request.headers.get("if-none-match") === etag && !request.headers.get("range")) {
+    return new Response(null, { status: 304, headers: baseHeaders });
+  }
 
   if (request.method === "HEAD") {
     return new Response(null, {

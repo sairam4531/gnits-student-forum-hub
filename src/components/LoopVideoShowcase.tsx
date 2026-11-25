@@ -28,7 +28,7 @@ export function LoopVideoShowcase({
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const [isMuted, setIsMuted] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [playbackFailed, setPlaybackFailed] = useState(false);
   const [localFallbackUrl, setLocalFallbackUrl] = useState<string | null>(null);
@@ -124,20 +124,29 @@ export function LoopVideoShowcase({
 
     vid.loop = true;
 
-    // 1. Attempt unmuted playback so sound works immediately
-    vid.muted = false;
-    vid
-      .play()
-      .then(() => {
-        setIsMuted(false);
-      })
-      .catch(() => {
-        // If browser autoplay policy requires initial user interaction for sound,
-        // start muted to ensure continuous autoplay, then unmute on first user interaction
-        vid.muted = true;
-        setIsMuted(true);
-        vid.play().catch(() => {});
-      });
+    const hasUserActivation = Boolean(
+      typeof navigator !== "undefined" &&
+        (navigator as { userActivation?: { hasBeenActive?: boolean } }).userActivation?.hasBeenActive,
+    );
+
+    if (hasUserActivation) {
+      vid.muted = false;
+      vid
+        .play()
+        .then(() => {
+          setIsMuted(false);
+        })
+        .catch(() => {
+          vid.muted = true;
+          setIsMuted(true);
+          vid.play().catch(() => {});
+        });
+    } else {
+      // Start muted immediately on initial load so browser autoplay renders frame 1 without waiting for a rejection tick
+      vid.muted = true;
+      setIsMuted(true);
+      vid.play().catch(() => {});
+    }
 
     // 2. Unmute as soon as the user interacts anywhere on the page
     const unmuteOnInteraction = () => {
@@ -216,8 +225,9 @@ export function LoopVideoShowcase({
         <video
           ref={videoRef}
           src={activeVideoUrl}
-          poster="/assets/student-affairs-reference.jpg"
+          preload="auto"
           autoPlay
+          muted={isMuted}
           loop
           playsInline
           onError={handleVideoError}

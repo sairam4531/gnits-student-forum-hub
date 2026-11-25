@@ -87,9 +87,14 @@ function AdminPage() {
         const session = await getAdminSessionServerFn();
         if (session.authenticated) {
           setIsAuthenticated(true);
-          const profile = await getAdminProfileServerFn();
-          setAdminProfile(profile);
-          await loadHomepageData();
+          setCheckingSession(false);
+          // Fetch profile and latest homepage data concurrently without blocking initial dashboard video render
+          await Promise.all([
+            getAdminProfileServerFn()
+              .then((profile) => setAdminProfile(profile))
+              .catch(() => {}),
+            loadHomepageData(),
+          ]);
         }
       } catch (err) {
         console.warn("Session check note:", err);

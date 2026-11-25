@@ -23,28 +23,53 @@ import {
 } from "@/lib/client-portal-store";
 
 export const Route = createFileRoute("/")({
+  loader: async () => {
+    try {
+      return await getPublicHomepageDataServerFn();
+    } catch {
+      return null;
+    }
+  },
+  staleTime: 60_000,
   component: StudentAffairsPortalPage,
 });
 
 function StudentAffairsPortalPage() {
   const navigate = useNavigate();
+  const initialHomeData = Route.useLoaderData();
 
-  // Initial state uses default structure to prevent SSR hydration mismatch (React #418)
-  const [photos, setPhotos] = useState<HomepagePhoto[]>([]);
-  const [featuredPhotos, setFeaturedPhotos] = useState<HomepagePhoto[]>([]);
-  const [featuredVideo, setFeaturedVideo] = useState<HomepageVideo | null>(null);
-  const [allVideos, setAllVideos] = useState<HomepageVideo[]>([]);
-  const [dean, setDean] = useState<DeanDetails>({
-    id: "dean-1",
-    name: "Dr. Aparna Patle",
-    designation: "Dean, Student Affairs & Professor",
-    profile_photo: "",
-    email: "aparna.patle@gnits.ac.in",
-    contact_number: "",
-    updated_at: new Date().toISOString(),
-  });
+  const initialPhotos = (initialHomeData?.photos || []).filter((p) => p.is_active);
+  const initialFeaturedPhotos =
+    initialPhotos.filter((p) => p.is_featured).slice(0, 4).length > 0
+      ? initialPhotos.filter((p) => p.is_featured).slice(0, 4)
+      : initialPhotos.slice(0, 4);
+  const initialVideos = (
+    initialHomeData?.allVideos ||
+    (initialHomeData?.featuredVideo ? [initialHomeData.featuredVideo] : [])
+  ).filter((v) => v.is_active);
+  const initialFeaturedVideo =
+    initialHomeData?.featuredVideo && initialHomeData.featuredVideo.is_active
+      ? initialHomeData.featuredVideo
+      : initialVideos.find((v) => v.is_featured) || initialVideos[0] || null;
 
-  const [allGalleryPhotos, setAllGalleryPhotos] = useState<HomepagePhoto[]>([]);
+  // Initial state seeded from SSR loader so campus video & Dean details render immediately without delay
+  const [photos, setPhotos] = useState<HomepagePhoto[]>(initialPhotos);
+  const [featuredPhotos, setFeaturedPhotos] = useState<HomepagePhoto[]>(initialFeaturedPhotos);
+  const [featuredVideo, setFeaturedVideo] = useState<HomepageVideo | null>(initialFeaturedVideo);
+  const [allVideos, setAllVideos] = useState<HomepageVideo[]>(initialVideos);
+  const [dean, setDean] = useState<DeanDetails>(
+    initialHomeData?.dean || {
+      id: "dean-1",
+      name: "Dr. Aparna Patle",
+      designation: "Dean, Student Affairs & Professor",
+      profile_photo: "",
+      email: "aparna.patle@gnits.ac.in",
+      contact_number: "",
+      updated_at: new Date().toISOString(),
+    },
+  );
+
+  const [allGalleryPhotos, setAllGalleryPhotos] = useState<HomepagePhoto[]>(initialPhotos);
   const [recentEvents, setRecentEvents] = useState<PublicEventRecord[]>([]);
 
   // Modals & Drawers state
@@ -73,14 +98,35 @@ function StudentAffairsPortalPage() {
 
   // Load public data on mount & merge safely
   useEffect(() => {
-    // 1. Immediately hydrate with persistent client data (after SSR hydration)
-    refreshFromClientStore();
+    if (initialHomeData) {
+      const merged = mergeServerWithClient({
+        photos: initialHomeData.photos || [],
+        videos:
+          initialHomeData.allVideos ||
+          (initialHomeData.featuredVideo ? [initialHomeData.featuredVideo] : []),
+        dean: initialHomeData.dean || dean,
+      });
+      const activePhotos = merged.photos.filter((p) => p.is_active);
+      const activeVideos = merged.videos.filter((v) => v.is_active);
+      const fVideo = activeVideos.find((v) => v.is_featured) || activeVideos[0] || null;
+      setPhotos(activePhotos);
+      setFeaturedPhotos(
+        activePhotos.filter((p) => p.is_featured).slice(0, 4).length > 0
+          ? activePhotos.filter((p) => p.is_featured).slice(0, 4)
+          : activePhotos.slice(0, 4),
+      );
+      setFeaturedVideo(fVideo);
+      setAllVideos(activeVideos);
+      setDean(merged.dean);
+      setAllGalleryPhotos(activePhotos);
+    } else {
+      refreshFromClientStore();
+    }
 
     async function loadData() {
       try {
-        const homeData = await getPublicHomepageDataServerFn();
-        if (homeData) {
-          // Perform smart merge to ensure user-uploaded items & edits are NEVER overwritten
+        const homeData = initialHomeData || (await getPublicHomepageDataServerFn());
+        if (homeData && !initialHomeData) {
           const merged = mergeServerWithClient({
             photos: homeData.photos || [],
             videos: homeData.allVideos || (homeData.featuredVideo ? [homeData.featuredVideo] : []),
@@ -116,13 +162,17 @@ function StudentAffairsPortalPage() {
           setRecentEvents(combined);
         }
 
-        const allPhotos = await getAllPublicPhotosServerFn();
-        if (allPhotos && allPhotos.length > 0) {
-          setAllGalleryPhotos((prev) => (prev.length > 0 ? prev : allPhotos));
+        if (!homeData?.photos?.length) {
+          const allPhotos = await getAllPublicPhotosServerFn();
+          if (allPhotos && allPhotos.length > 0) {
+            setAllGalleryPhotos((prev) => (prev.length > 0 ? prev : allPhotos));
+          }
         }
       } catch (err) {
         console.warn("Could not load homepage data from server, using persistent store:", err);
-        refreshFromClientStore();
+        if (!initialHomeData) {
+          refreshFromClientStore();
+        }
       }
     }
 
