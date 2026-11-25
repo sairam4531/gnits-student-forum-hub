@@ -81,10 +81,8 @@ async function fetchPublicSupabaseEvents(filter?: {
     });
 
     let query = client
-      .from("student_forum_events")
-      .select(
-        "id, club_slug, forum_slug, event_name, event_start, event_end, created_at, resource_persons",
-      );
+      .from("student_forum_event_summaries")
+      .select("id, club_slug, forum_slug, event_name, event_start, event_end, created_at");
 
     if (filter) {
       query = query.eq("club_slug", filter.clubSlug).eq("forum_slug", filter.forumSlug);
@@ -93,16 +91,28 @@ async function fetchPublicSupabaseEvents(filter?: {
     const { data: remoteEvents, error } = await query.order("event_start", { ascending: false });
     if (error || !remoteEvents) return [];
 
-    return remoteEvents.map((ev) => ({
-      id: ev.id,
-      club_slug: ev.club_slug,
-      forum_slug: ev.forum_slug,
-      event_name: ev.event_name,
-      event_start: ev.event_start,
-      event_end: ev.event_end,
-      created_at: ev.created_at,
-      resource_persons: ev.resource_persons,
-    }));
+    return remoteEvents.flatMap((ev): PublicEventRecord[] => {
+      if (
+        typeof ev.id !== "string" ||
+        typeof ev.club_slug !== "string" ||
+        typeof ev.forum_slug !== "string" ||
+        typeof ev.event_name !== "string" ||
+        typeof ev.event_start !== "string" ||
+        typeof ev.event_end !== "string" ||
+        typeof ev.created_at !== "string"
+      ) {
+        return [];
+      }
+      return [{
+        id: ev.id,
+        club_slug: ev.club_slug,
+        forum_slug: ev.forum_slug,
+        event_name: ev.event_name,
+        event_start: ev.event_start,
+        event_end: ev.event_end,
+        created_at: ev.created_at,
+      }];
+    });
   } catch (err) {
     console.warn("Public Supabase query note (using KV/local store):", err);
     return [];
@@ -140,7 +150,6 @@ function mergePublicEventLists(
         event_start: e.event_start,
         event_end: e.event_end,
         created_at: e.created_at,
-        resource_persons: e.resource_persons,
       });
     }
   }

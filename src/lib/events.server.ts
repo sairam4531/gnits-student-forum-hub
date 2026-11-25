@@ -1,9 +1,10 @@
 // Server-only event submission processor with Supabase primary & durable Cloudflare KV persistence.
 import type { AdminEventRecord } from "@/lib/admin.functions";
 import { verifySession } from "@/lib/admin-session.server";
-import type { EventSubmission } from "@/lib/event-validation";
+import { isSubmissionPath, MAX_UPLOAD_BYTES, type EventSubmission } from "@/lib/event-validation";
 import {
   buildEventFileDownloadUrl,
+  getEventFileFromKv,
   getEventsStoreAsync,
   saveEventFileToKv,
   saveEventsStoreAsync,
@@ -19,11 +20,52 @@ async function sha256Hex(value: string): Promise<string> {
     .join("");
 }
 
+export function decodeEventFileDataUrl(
+  dataUrl: string,
+  fallbackContentType: string,
+): { bytes: Uint8Array; contentType: string } {
+  const maxBase64Chars = Math.ceil(MAX_UPLOAD_BYTES / 3) * 4 + 256;
+  if (dataUrl.length > maxBase64Chars) {
+    throw new Error("Each event attachment must be 20 MB or smaller.");
+  }
+  const match = /^data:([^;,]*);base64,([A-Za-z0-9+/]*={0,2})$/.exec(dataUrl);
+  const encoded = match?.[2];
+  if (encoded === undefined || encoded.length === 0) {
+    throw new Error("An event attachment could not be read. Please upload it again.");
+  }
+  let binary: string;
+  try {
+    binary = atob(encoded);
+  } catch {
+    throw new Error("An event attachment could not be read. Please upload it again.");
+  }
+  if (binary.length > MAX_UPLOAD_BYTES) {
+    throw new Error("Each event attachment must be 20 MB or smaller.");
+  }
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return {
+    bytes,
+    contentType: match?.[1] || fallbackContentType || "application/octet-stream",
+  };
+}
+
 export async function processStudentEventSubmission(
   data: EventSubmission,
   adminSessionToken: string | undefined,
 ): Promise<{ id: string; success: boolean; editToken?: string }> {
   const eventId = data.id || globalThis.crypto.randomUUID();
+  const submissionFolder = `submissions/${eventId}/`;
+  const submissionPaths = [data.reportObjectPath, ...data.photoObjectPaths];
+  if (
+    submissionPaths.some(
+      (path) => !isSubmissionPath(path) || !path.startsWith(submissionFolder),
+    )
+  ) {
+    throw new Error("Event attachments must belong to this submission.");
+  }
 
   const {
     supabaseAdmin,
@@ -103,19 +145,18 @@ export async function processStudentEventSubmission(
   // Store submitted report and photo files locally and in Cloudflare KV (when bound)
   const keepExistingReport =
     isUpdate &&
-    Boolean(existingStoreEvent) &&
     !data.reportBase64 &&
     (data.reportObjectPath === `submissions/${eventId}/report.pdf` ||
       data.reportObjectPath === existingStoreEvent?.report_object_path);
 
   const finalReportObjectPath = keepExistingReport
-    ? existingStoreEvent!.report_object_path
+    ? existingStoreEvent?.report_object_path || data.reportObjectPath
     : data.reportObjectPath;
   const finalReportFileName = keepExistingReport
-    ? existingStoreEvent!.report_file_name
+    ? existingStoreEvent?.report_file_name || data.reportFileName
     : data.reportFileName;
   const finalReportContentType = keepExistingReport
-    ? existingStoreEvent!.report_content_type
+    ? existingStoreEvent?.report_content_type || data.reportContentType
     : data.reportContentType;
 
   let reportDownloadUrl =
@@ -141,15 +182,15 @@ export async function processStudentEventSubmission(
     (!data.photoBase64s || data.photoBase64s.length === 0) &&
     (existingStoreEvent?.photo_object_paths?.length ?? 0) > 0;
 
-  const finalPhotoObjectPaths = keepExistingPhotos
-    ? existingStoreEvent!.photo_object_paths
+  const finalPhotoObjectPaths = keepExistingPhotos && existingStoreEvent
+    ? existingStoreEvent.photo_object_paths
     : data.photoObjectPaths;
-  const finalPhotoFileNames = keepExistingPhotos
-    ? existingStoreEvent!.photo_file_names
+  const finalPhotoFileNames = keepExistingPhotos && existingStoreEvent
+    ? existingStoreEvent.photo_file_names
     : data.photoFileNames;
 
   const photoDownloadUrls: string[] = keepExistingPhotos
-    ? existingStoreEvent!.photo_download_urls ||
+    ? existingStoreEvent?.photo_download_urls ||
       finalPhotoObjectPaths.map((p) => buildEventFileDownloadUrl(p))
     : [];
 
@@ -174,6 +215,60 @@ export async function processStudentEventSubmission(
 
   // Commit to Supabase when genuine service-role configuration is present
   if (supabaseReady) {
+    const ensureExistingFile = async (path: string) => {
+      const { data: signedFile, error: signedFileError } = await supabaseAdmin.storage
+        .from("student-forum-files")
+        .createSignedUrl(path, 60);
+      if (!signedFileError && signedFile?.signedUrl) return;
+
+      const savedFile = await getEventFileFromKv(path);
+      if (!savedFile) {
+        throw new Error("A previously saved event attachment is missing. Please upload it again.");
+      }
+      const { error: restoreError } = await supabaseAdmin.storage
+        .from("student-forum-files")
+        .upload(path, new Uint8Array(savedFile.bytes), {
+          contentType: savedFile.contentType,
+          upsert: false,
+        });
+      if (restoreError) {
+        console.error("Could not restore an existing event attachment:", restoreError.message);
+        throw new Error("A previously saved event attachment could not be restored.");
+      }
+    };
+
+    const uploadNewFile = async (path: string, dataUrl: string, contentType: string) => {
+      const decoded = decodeEventFileDataUrl(dataUrl, contentType);
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from("student-forum-files")
+        .upload(path, decoded.bytes, { contentType: decoded.contentType, upsert: false });
+      if (uploadError) {
+        console.error("Event attachment upload failed:", uploadError.message);
+        throw new Error("An event attachment could not be saved. Please retry the submission.");
+      }
+    };
+
+    if (data.reportBase64) {
+      await uploadNewFile(finalReportObjectPath, data.reportBase64, finalReportContentType);
+    } else if (isUpdate) {
+      await ensureExistingFile(finalReportObjectPath);
+    } else {
+      throw new Error("Please upload the event report before submitting.");
+    }
+
+    for (let index = 0; index < finalPhotoObjectPaths.length; index++) {
+      const photoPath = finalPhotoObjectPaths[index];
+      if (!photoPath) continue;
+      const photoDataUrl = data.photoBase64s?.[index];
+      if (photoDataUrl) {
+        await uploadNewFile(photoPath, photoDataUrl, "image/jpeg");
+      } else if (isUpdate) {
+        await ensureExistingFile(photoPath);
+      } else {
+        throw new Error("An event photo could not be read. Please upload it again.");
+      }
+    }
+
     const { error: upsertError } = await supabaseAdmin.from("student_forum_events").upsert({
       id: eventId,
       club_slug: data.clubSlug,

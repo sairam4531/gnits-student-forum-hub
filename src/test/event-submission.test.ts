@@ -1,4 +1,4 @@
-import { eventSubmissionSchema } from "@/lib/event-validation";
+import { eventSubmissionSchema, MAX_UPLOAD_BYTES } from "@/lib/event-validation";
 
 describe("Event Submission Flow & Security Audit", () => {
   // -------------------------------------------------------------
@@ -73,12 +73,26 @@ describe("Event Submission Flow & Security Audit", () => {
     });
   });
 
+  describe("Server-side private attachment uploads", () => {
+    it("enforces the 20 MB attachment limit before decoding", async () => {
+      const { decodeEventFileDataUrl } = await import("@/lib/events.server");
+      expect(MAX_UPLOAD_BYTES).toBe(20 * 1024 * 1024);
+      const oversizedPayload = `data:application/pdf;base64,${"A".repeat(
+        Math.ceil(MAX_UPLOAD_BYTES / 3) * 4 + 256,
+      )}`;
+      expect(() => decodeEventFileDataUrl(oversizedPayload, "application/pdf")).toThrow(
+        /20 MB or smaller/i,
+      );
+    });
+  });
+
   // -------------------------------------------------------------
   // 2. Event Input Validation
   // -------------------------------------------------------------
   describe("Event Input Validation (eventSubmissionSchema)", () => {
     const validSubId = "a1b2c3d4-e5f6-7890-abcd-ef1234567890";
     const validEvent = {
+      id: validSubId,
       clubSlug: "technical-events",
       forumSlug: "iste",
       eventName: "Hands-on Examination Workshop",
@@ -141,6 +155,15 @@ describe("Event Submission Flow & Security Audit", () => {
         photoFileNames: ["only_one_name.jpg"],
       };
       const result = eventSubmissionSchema.safeParse(mismatchedPhotos);
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects attachments stored outside the event's own submission folder", () => {
+      const wrongFolder = {
+        ...validEvent,
+        reportObjectPath: "submissions/b1b2c3d4-e5f6-7890-abcd-ef1234567890/report.pdf",
+      };
+      const result = eventSubmissionSchema.safeParse(wrongFolder);
       expect(result.success).toBe(false);
     });
   });

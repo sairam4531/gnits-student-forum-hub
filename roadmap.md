@@ -2,4 +2,5 @@
 - [x] Add all named forums and subclubs, event submission with student name/email, and saved file/report records.
 - [x] Add secure admin sign-in, profile details, submitted-event review, downloads, and Excel export.
 - [x] Verify the user submission and admin review flows, responsive layout, route metadata, and tests.
+- [x] Fix the selected event-summary and anonymous-upload security findings without changing other findings.
 - [ ] Fix cross-browser and cross-device persistence for event submissions and homepage/admin content.

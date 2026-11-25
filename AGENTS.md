@@ -33,3 +33,4 @@ use the editor.
 - Verify the temporary administrator credentials only in server functions and keep them out of browser code; admin access uses an encrypted, HTTP-only session cookie.
 - Public event browsing exposes only event titles and dates; submitter contact details and private-file links stay behind server-verified admin access.
 - Keep administrator display-name and avatar details in a service-role-only profile table, separate from the temporary login credentials.
+- Route anonymous event-file uploads through validated server-side submission handling; do not grant direct bucket writes because students have no account-based owner.

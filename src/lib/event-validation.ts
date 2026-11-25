@@ -37,7 +37,7 @@ export const eventDetailsSchema = z.object(eventDetailsShape).superRefine(addEve
 
 export const eventSubmissionSchema = z
   .object({
-    id: z.string().optional(),
+    id: z.string().uuid().optional(),
     ...eventDetailsShape,
     reportObjectPath: z.string().min(1).max(500),
     reportFileName: z.string().trim().min(1).max(180),
@@ -68,6 +68,13 @@ export const eventSubmissionSchema = z
         code: "custom",
         path: ["reportObjectPath"],
         message: "The uploaded files are not valid submission files.",
+      });
+    }
+    if (event.id && paths.some((path) => !path.startsWith(`submissions/${event.id}/`))) {
+      context.addIssue({
+        code: "custom",
+        path: ["reportObjectPath"],
+        message: "Event files must belong to this submission.",
       });
     }
   });

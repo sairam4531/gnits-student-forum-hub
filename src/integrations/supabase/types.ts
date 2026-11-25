@@ -91,7 +91,36 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      student_forum_event_summaries: {
+        Row: {
+          club_slug: string | null
+          created_at: string | null
+          event_end: string | null
+          event_name: string | null
+          event_start: string | null
+          forum_slug: string | null
+          id: string | null
+        }
+        Insert: {
+          club_slug?: string | null
+          created_at?: string | null
+          event_end?: string | null
+          event_name?: string | null
+          event_start?: string | null
+          forum_slug?: string | null
+          id?: string | null
+        }
+        Update: {
+          club_slug?: string | null
+          created_at?: string | null
+          event_end?: string | null
+          event_name?: string | null
+          event_start?: string | null
+          forum_slug?: string | null
+          id?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       [_ in never]: never

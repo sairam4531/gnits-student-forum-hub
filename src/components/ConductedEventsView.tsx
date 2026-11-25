@@ -17,7 +17,6 @@ import {
 } from "lucide-react";
 import { getPublicForumEvents, submitStudentEvent, type PublicEventRecord } from "@/lib/events.functions";
 import { type AdminEventRecord } from "@/lib/admin.functions";
-import { supabase } from "@/integrations/supabase/client";
 import { type ForumClub } from "@/lib/student-forums";
 import {
   getClientEvents,
@@ -28,6 +27,7 @@ import {
   saveEventEditToken,
 } from "@/lib/client-portal-store";
 import { saveEventFile, compressImage } from "@/lib/event-file-storage";
+import { MAX_UPLOAD_BYTES } from "@/lib/event-validation";
 
 interface ConductedEventsViewProps {
   club: ForumClub;
@@ -266,6 +266,13 @@ export function ConductedEventsView({
       setSubmitError("Please upload the Event Report (PDF or Word format).");
       return;
     }
+    if (
+      (reportFile?.size ?? 0) > MAX_UPLOAD_BYTES ||
+      photoFiles.some((file) => file.size > MAX_UPLOAD_BYTES)
+    ) {
+      setSubmitError("Each uploaded file must be 20 MB or smaller.");
+      return;
+    }
 
     setSubmitting(true);
 
@@ -281,22 +288,13 @@ export function ConductedEventsView({
 
       if (reportFile) {
         const reportSafeName = sanitizeName(reportFile.name);
-        finalReportPath = `submissions/${submissionId}/${reportSafeName}`;
+        finalReportPath = `submissions/${submissionId}/${crypto.randomUUID()}_${reportSafeName}`;
         finalReportName = reportFile.name;
         finalReportType = reportFile.type || "application/pdf";
 
-        // Save report file to IndexedDB for reliable permanent storage & instant downloads
+        // Keep a local recovery copy while the server stores the private cloud file.
         await saveEventFile(finalReportPath, reportFile, reportFile.name);
-
-        if (reportFile.size <= 3 * 1024 * 1024) {
-          safeReportBase64 = await fileToBase64(reportFile);
-        }
-
-        try {
-          await supabase.storage.from("student-forum-files").upload(finalReportPath, reportFile);
-        } catch {
-          // fallback
-        }
+        safeReportBase64 = await fileToBase64(reportFile);
       }
 
       // 2. Prepare photos
@@ -308,34 +306,45 @@ export function ConductedEventsView({
       if (photoFiles.length > 0) {
         const newPhotoPaths: string[] = [];
         const newPhotoNames: string[] = [];
+        const newPhotoBase64s: string[] = [];
+        const compressedPhotos = await Promise.all(
+          photoFiles.map((photo) => compressImage(photo, 1200, 1200, 0.75)),
+        );
 
         for (let i = 0; i < photoFiles.length; i++) {
-          const photo = photoFiles[i]!;
-          const photoSafeName = `${i}_${sanitizeName(photo.name)}`;
+          const photo = photoFiles[i];
+          const photoBase64 = compressedPhotos[i];
+          if (!photo || !photoBase64) {
+            throw new Error("A selected photo could not be prepared. Please choose it again.");
+          }
+          const originalStem = photo.name.replace(/\.[^.]+$/, "");
+          const safeStem = sanitizeName(originalStem) || `photo_${i + 1}`;
+          const photoMimeType = /^data:([^;,]+)/.exec(photoBase64)?.[1] || photo.type;
+          const photoExtension =
+            photoMimeType === "image/jpeg"
+              ? "jpg"
+              : photoMimeType === "image/png"
+                ? "png"
+                : photoMimeType === "image/webp"
+                  ? "webp"
+                  : photoMimeType === "image/gif"
+                    ? "gif"
+                    : photoMimeType === "image/avif"
+                      ? "avif"
+                      : "img";
+          const photoSafeName = `${i}_${crypto.randomUUID()}_${safeStem}.${photoExtension}`;
           const photoPath = `submissions/${submissionId}/${photoSafeName}`;
           newPhotoPaths.push(photoPath);
           newPhotoNames.push(photo.name);
-          await saveEventFile(photoPath, photo, photo.name);
-
-          try {
-            await supabase.storage.from("student-forum-files").upload(photoPath, photo);
-          } catch {
-            // fallback
-          }
+          const compressedBlob = await fetch(photoBase64).then((response) => response.blob());
+          await saveEventFile(photoPath, compressedBlob, photo.name);
+          newPhotoBase64s.push(photoBase64);
         }
 
-        try {
-          const compressed = await Promise.all(
-            photoFiles.slice(0, 5).map((p) => compressImage(p, 800, 800, 0.65))
-          );
-          safePhotoBase64s = compressed.filter(Boolean);
-        } catch {
-          safePhotoBase64s = undefined;
-        }
-
+        safePhotoBase64s = newPhotoBase64s;
         finalPhotoPaths = newPhotoPaths;
         finalPhotoNames = newPhotoNames;
-        finalPhotoUrls = safePhotoBase64s || [];
+        finalPhotoUrls = newPhotoBase64s;
       }
 
       const editToken = editingEventId ? getEventEditToken(editingEventId) : undefined;
