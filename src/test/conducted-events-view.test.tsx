@@ -1,14 +1,22 @@
 import { render, screen, waitFor, cleanup } from "@testing-library/react";
 import { ConductedEventsView } from "@/components/ConductedEventsView";
+import { AdminEventsView } from "@/components/AdminEventsView";
 import { saveClientEvent } from "@/lib/client-portal-store";
 import { forums } from "@/lib/student-forums";
 
 const mockGetPublicForumEvents = vi.fn();
 const mockSubmitStudentEvent = vi.fn();
+const mockGetAdminForumEventsServerFn = vi.fn();
+const mockDeleteAdminEventServerFn = vi.fn();
 
 vi.mock("@/lib/events.functions", () => ({
   getPublicForumEvents: (args: unknown) => mockGetPublicForumEvents(args),
   submitStudentEvent: (args: unknown) => mockSubmitStudentEvent(args),
+}));
+
+vi.mock("@/lib/admin.functions", () => ({
+  getAdminForumEventsServerFn: (args: unknown) => mockGetAdminForumEventsServerFn(args),
+  deleteAdminEventServerFn: (args: unknown) => mockDeleteAdminEventServerFn(args),
 }));
 
 describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
@@ -71,7 +79,7 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
           club={techClub}
           forumName="ISTE"
           forumSlug="iste"
-          isAdmin={true}
+          isAdmin={false}
         />,
       );
 
@@ -81,6 +89,7 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
 
       expect(screen.getByText("sedger")).toBeTruthy();
       expect(screen.getByText("Tha")).toBeTruthy();
+      expect(screen.getAllByRole("button", { name: /^edit$/i }).length).toBe(2);
       expect(mockGetPublicForumEvents).toHaveBeenCalledTimes(1);
       // Hydrating server results must NOT emit cross-tab sync broadcasts
       expect(postMessages.length).toBe(0);
@@ -91,5 +100,41 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
     } finally {
       globalThis.BroadcastChannel = OriginalBC;
     }
+  });
+
+  it("displays submitted student data, report download, photos, and Delete Event button in AdminEventsView", async () => {
+    mockGetAdminForumEventsServerFn.mockResolvedValue([
+      {
+        id: "ev-admin-1",
+        club_slug: "technical-events",
+        forum_slug: "iste",
+        event_name: "AI Workshop",
+        event_start: "2026-11-25",
+        event_end: "2026-11-26",
+        resource_persons: "Dr. Aparna Patle",
+        submitter_name: "Ananya Reddy",
+        submitter_email: "ananya@gnits.ac.in",
+        report_object_path: "submissions/ev-admin-1/report.pdf",
+        report_file_name: "AI_Report.pdf",
+        report_content_type: "application/pdf",
+        photo_object_paths: ["submissions/ev-admin-1/0_stage.jpg"],
+        photo_file_names: ["stage.jpg"],
+        created_at: "2026-11-25T17:00:00.000Z",
+        report_download_url: "/api/event-file?path=submissions%2Fev-admin-1%2Freport.pdf",
+        photo_download_urls: ["/api/event-file?path=submissions%2Fev-admin-1%2F0_stage.jpg"],
+      },
+    ]);
+
+    const techClub = forums[0]!;
+    render(<AdminEventsView club={techClub} forumName="ISTE" forumSlug="iste" />);
+
+    expect(await screen.findByText("AI Workshop")).toBeTruthy();
+    expect(screen.getByText("Ananya Reddy")).toBeTruthy();
+    expect(screen.getByText("ananya@gnits.ac.in")).toBeTruthy();
+    expect(screen.getByText("Dr. Aparna Patle")).toBeTruthy();
+    expect(screen.getByText(/report:\s*ai_report\.pdf/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /download/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /view photos \(1\)/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /delete event/i })).toBeTruthy();
   });
 });

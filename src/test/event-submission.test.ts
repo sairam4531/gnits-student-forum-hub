@@ -264,7 +264,10 @@ describe("Event Submission Flow & Security Audit", () => {
         };
 
         const result = await processStudentEventSubmission(payload, undefined);
-        expect(result).toEqual({ id: subId, success: true });
+        expect(result.id).toBe(subId);
+        expect(result.success).toBe(true);
+        expect(typeof result.editToken).toBe("string");
+        expect(result.editToken!.length).toBeGreaterThanOrEqual(16);
 
         const storedEventsRaw = kvMap.get("events_store") as string;
         expect(storedEventsRaw).toBeTruthy();
@@ -281,10 +284,37 @@ describe("Event Submission Flow & Security Audit", () => {
           `/api/event-file?path=${encodeURIComponent(photoPath)}`,
         );
 
-        // Unauthenticated edit attempt on existing event ID must fail
+        // Unauthenticated edit attempt without matching editToken must fail
         await expect(
           processStudentEventSubmission({ ...payload, eventName: "Tampered" }, undefined),
         ).rejects.toThrow(/Unauthorized/i);
+
+        // Student Portal edit WITH valid editToken succeeds and preserves existing KV files when not re-uploaded
+        const studentUpdated = await processStudentEventSubmission(
+          {
+            ...payload,
+            eventName: "Student Edited Symposium",
+            reportObjectPath: `submissions/${subId}/report.pdf`,
+            reportBase64: undefined,
+            photoObjectPaths: [],
+            photoFileNames: [],
+            photoBase64s: undefined,
+            editToken: result.editToken,
+          },
+          undefined,
+        );
+        expect(studentUpdated.success).toBe(true);
+        const afterStudentEdit = JSON.parse(kvMap.get("events_store") as string) as Array<{
+          id: string;
+          event_name: string;
+          report_object_path: string;
+          report_download_url?: string;
+          photo_object_paths: string[];
+        }>;
+        const editedRec = afterStudentEdit.find((e) => e.id === subId);
+        expect(editedRec?.event_name).toBe("Student Edited Symposium");
+        expect(editedRec?.report_object_path).toBe(reportPath);
+        expect(editedRec?.photo_object_paths).toEqual([photoPath]);
 
         // Unauthenticated request to /api/event-file must be blocked
         const unauthFileRes = await handleEventFileRequest(

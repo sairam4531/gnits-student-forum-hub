@@ -11,10 +11,18 @@ import {
 } from "@/lib/local-events-store";
 import { getCloudflareKVNamespace } from "@/lib/local-homepage-store";
 
+async function sha256Hex(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 export async function processStudentEventSubmission(
   data: EventSubmission,
   adminSessionToken: string | undefined,
-): Promise<{ id: string; success: boolean }> {
+): Promise<{ id: string; success: boolean; editToken?: string }> {
   const eventId = data.id || globalThis.crypto.randomUUID();
 
   const {
@@ -54,47 +62,114 @@ export async function processStudentEventSubmission(
   }
 
   const isUpdate = existingRemoteRow || Boolean(existingStoreEvent);
+  let issuedEditToken: string | undefined;
+  let nextEditTokenHash = existingStoreEvent?.edit_token_hash;
+
   if (isUpdate) {
-    // Strictly require authenticated administrator session cookie to update an existing event
     const session = await verifySession(adminSessionToken);
-    if (!session) {
+    let authorized = Boolean(session);
+
+    if (!authorized && data.editToken && existingStoreEvent?.edit_token_hash) {
+      const incomingHash = await sha256Hex(data.editToken);
+      if (incomingHash === existingStoreEvent.edit_token_hash) {
+        authorized = true;
+      }
+    }
+
+    // Allow legacy records submitted before edit tokens existed ONLY when matching private submitter email
+    if (
+      !authorized &&
+      existingStoreEvent &&
+      !existingStoreEvent.edit_token_hash &&
+      !existingRemoteRow &&
+      existingStoreEvent.submitter_email?.trim().toLowerCase() ===
+        data.submitterEmail.trim().toLowerCase()
+    ) {
+      authorized = true;
+      issuedEditToken = globalThis.crypto.randomUUID();
+      nextEditTokenHash = await sha256Hex(issuedEditToken);
+    }
+
+    if (!authorized) {
       throw new Error(
-        "Unauthorized: Only authenticated Student Affairs administrators are authorized to edit existing conducted event records.",
+        "Unauthorized: Only the original submitting portal session, matching submitter verification, or an authenticated Student Affairs administrator can edit this event.",
       );
     }
+  } else {
+    issuedEditToken = globalThis.crypto.randomUUID();
+    nextEditTokenHash = await sha256Hex(issuedEditToken);
   }
 
   // Store submitted report and photo files locally and in Cloudflare KV (when bound)
-  let reportDownloadUrl = existingStoreEvent?.report_download_url || `/${data.reportObjectPath}`;
+  const keepExistingReport =
+    isUpdate &&
+    Boolean(existingStoreEvent) &&
+    !data.reportBase64 &&
+    (data.reportObjectPath === `submissions/${eventId}/report.pdf` ||
+      data.reportObjectPath === existingStoreEvent?.report_object_path);
+
+  const finalReportObjectPath = keepExistingReport
+    ? existingStoreEvent!.report_object_path
+    : data.reportObjectPath;
+  const finalReportFileName = keepExistingReport
+    ? existingStoreEvent!.report_file_name
+    : data.reportFileName;
+  const finalReportContentType = keepExistingReport
+    ? existingStoreEvent!.report_content_type
+    : data.reportContentType;
+
+  let reportDownloadUrl =
+    (keepExistingReport ? existingStoreEvent?.report_download_url : undefined) ||
+    `/${finalReportObjectPath}`;
   if (data.reportBase64) {
-    saveFileLocally(data.reportObjectPath, data.reportBase64);
+    saveFileLocally(finalReportObjectPath, data.reportBase64);
     const savedKvReport = await saveEventFileToKv(
-      data.reportObjectPath,
+      finalReportObjectPath,
       data.reportBase64,
-      data.reportContentType,
-      data.reportFileName,
+      finalReportContentType,
+      finalReportFileName,
     );
     if (savedKvReport) {
-      reportDownloadUrl = buildEventFileDownloadUrl(data.reportObjectPath);
+      reportDownloadUrl = buildEventFileDownloadUrl(finalReportObjectPath);
     }
   }
 
-  const photoDownloadUrls: string[] = [];
-  for (let i = 0; i < data.photoObjectPaths.length; i++) {
-    const pPath = data.photoObjectPaths[i];
-    const pName = data.photoFileNames[i];
-    const b64 = data.photoBase64s?.[i];
-    if (!pPath) continue;
+  const keepExistingPhotos =
+    isUpdate &&
+    Boolean(existingStoreEvent) &&
+    data.photoObjectPaths.length === 0 &&
+    (!data.photoBase64s || data.photoBase64s.length === 0) &&
+    (existingStoreEvent?.photo_object_paths?.length ?? 0) > 0;
 
-    let resolvedPhotoUrl = existingStoreEvent?.photo_download_urls?.[i] || `/${pPath}`;
-    if (b64) {
-      saveFileLocally(pPath, b64);
-      const savedKvPhoto = await saveEventFileToKv(pPath, b64, undefined, pName);
-      if (savedKvPhoto) {
-        resolvedPhotoUrl = buildEventFileDownloadUrl(pPath);
+  const finalPhotoObjectPaths = keepExistingPhotos
+    ? existingStoreEvent!.photo_object_paths
+    : data.photoObjectPaths;
+  const finalPhotoFileNames = keepExistingPhotos
+    ? existingStoreEvent!.photo_file_names
+    : data.photoFileNames;
+
+  const photoDownloadUrls: string[] = keepExistingPhotos
+    ? existingStoreEvent!.photo_download_urls ||
+      finalPhotoObjectPaths.map((p) => buildEventFileDownloadUrl(p))
+    : [];
+
+  if (!keepExistingPhotos) {
+    for (let i = 0; i < finalPhotoObjectPaths.length; i++) {
+      const pPath = finalPhotoObjectPaths[i];
+      const pName = finalPhotoFileNames[i];
+      const b64 = data.photoBase64s?.[i];
+      if (!pPath) continue;
+
+      let resolvedPhotoUrl = existingStoreEvent?.photo_download_urls?.[i] || `/${pPath}`;
+      if (b64) {
+        saveFileLocally(pPath, b64);
+        const savedKvPhoto = await saveEventFileToKv(pPath, b64, undefined, pName);
+        if (savedKvPhoto) {
+          resolvedPhotoUrl = buildEventFileDownloadUrl(pPath);
+        }
       }
+      photoDownloadUrls.push(resolvedPhotoUrl);
     }
-    photoDownloadUrls.push(resolvedPhotoUrl);
   }
 
   // Commit to Supabase when genuine service-role configuration is present
@@ -109,11 +184,11 @@ export async function processStudentEventSubmission(
       resource_persons: data.resourcePersons,
       submitter_name: data.submitterName,
       submitter_email: data.submitterEmail,
-      report_object_path: data.reportObjectPath,
-      report_file_name: data.reportFileName,
-      report_content_type: data.reportContentType,
-      photo_object_paths: data.photoObjectPaths,
-      photo_file_names: data.photoFileNames,
+      report_object_path: finalReportObjectPath,
+      report_file_name: finalReportFileName,
+      report_content_type: finalReportContentType,
+      photo_object_paths: finalPhotoObjectPaths,
+      photo_file_names: finalPhotoFileNames,
     });
 
     if (upsertError) {
@@ -150,15 +225,16 @@ export async function processStudentEventSubmission(
     resource_persons: data.resourcePersons,
     submitter_name: data.submitterName,
     submitter_email: data.submitterEmail,
-    report_object_path: data.reportObjectPath,
-    report_file_name: data.reportFileName,
-    report_content_type: data.reportContentType,
-    photo_object_paths: data.photoObjectPaths,
-    photo_file_names: data.photoFileNames,
+    report_object_path: finalReportObjectPath,
+    report_file_name: finalReportFileName,
+    report_content_type: finalReportContentType,
+    photo_object_paths: finalPhotoObjectPaths,
+    photo_file_names: finalPhotoFileNames,
     created_at: existingStoreEvent?.created_at || new Date().toISOString(),
     updated_at: isUpdate ? new Date().toISOString() : undefined,
     report_download_url: reportDownloadUrl,
     photo_download_urls: photoDownloadUrls,
+    edit_token_hash: nextEditTokenHash,
   };
 
   try {
@@ -180,5 +256,5 @@ export async function processStudentEventSubmission(
     console.warn("KV cache update note (DB commit succeeded):", kvErr);
   }
 
-  return { id: eventId, success: true };
+  return issuedEditToken ? { id: eventId, success: true, editToken: issuedEditToken } : { id: eventId, success: true };
 }

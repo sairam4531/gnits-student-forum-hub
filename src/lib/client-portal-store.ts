@@ -10,6 +10,7 @@ import type { AdminEventRecord } from "@/lib/admin.functions";
 const HOMEPAGE_KEY = "GNITS_HOMEPAGE_PERSISTENT_DATA_V2";
 const EVENTS_KEY = "GNITS_EVENTS_PERSISTENT_DATA_V2";
 const ADMIN_EVENTS_KEY = "GNITS_ADMIN_EVENTS_PERSISTENT_DATA_V2";
+const EVENT_EDIT_TOKENS_KEY = "GNITS_EVENT_EDIT_TOKENS_V1";
 const DELETED_IDS_KEY = "GNITS_DELETED_ITEMS_TRACKER_V2";
 const SYNC_BROADCAST_CHANNEL = "gnits_portal_sync_channel";
 
@@ -376,6 +377,30 @@ export function saveClientEvent(
     if (options.broadcast !== false) {
       broadcastUpdate("EVENTS");
     }
+  } catch {
+    // ignore
+  }
+}
+
+export function getEventEditToken(eventId: string): string | undefined {
+  if (!isClient()) return undefined;
+  try {
+    const raw = localStorage.getItem(EVENT_EDIT_TOKENS_KEY);
+    if (!raw) return undefined;
+    const map = JSON.parse(raw) as Record<string, string>;
+    return typeof map[eventId] === "string" ? map[eventId] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function saveEventEditToken(eventId: string, token: string): void {
+  if (!isClient() || !token) return;
+  try {
+    const raw = localStorage.getItem(EVENT_EDIT_TOKENS_KEY);
+    const map = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+    map[eventId] = token;
+    localStorage.setItem(EVENT_EDIT_TOKENS_KEY, JSON.stringify(map));
   } catch {
     // ignore
   }

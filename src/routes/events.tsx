@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { StudentAffairsHeader } from "@/components/StudentAffairsHeader";
 import { ConductedEventsView } from "@/components/ConductedEventsView";
+import { AdminEventsView } from "@/components/AdminEventsView";
 import { EventsClubsDrawer } from "@/components/EventsClubsDrawer";
 import { forums, type ForumClub } from "@/lib/student-forums";
 import {
@@ -230,12 +231,20 @@ function DedicatedEventPage() {
       <main className="flex-1 py-8 sm:py-10">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
           <div className="rounded-3xl bg-white p-6 sm:p-8 md:p-10 border border-slate-200 shadow-xl animate-in fade-in duration-200">
-            <ConductedEventsView
-              club={selectedClub}
-              forumName={forumName}
-              forumSlug={forumSlug}
-              isAdmin={isAdmin}
-            />
+            {isAdmin ? (
+              <AdminEventsView
+                club={selectedClub}
+                forumName={forumName}
+                forumSlug={forumSlug}
+              />
+            ) : (
+              <ConductedEventsView
+                club={selectedClub}
+                forumName={forumName}
+                forumSlug={forumSlug}
+                isAdmin={false}
+              />
+            )}
           </div>
         </div>
       </main>

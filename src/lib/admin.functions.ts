@@ -50,6 +50,7 @@ export interface AdminEventRecord {
   updated_at?: string | undefined;
   report_download_url?: string | undefined;
   photo_download_urls?: string[] | undefined;
+  edit_token_hash?: string | undefined;
 }
 
 export interface AdminProfileRecord {
@@ -296,8 +297,9 @@ export const getAdminForumEventsServerFn = createServerFn({ method: "GET" })
           resolvedPhotoUrls.push(pUrl);
         }
 
+        const { edit_token_hash: _omitHash, ...safeAdminEv } = ev;
         records.push({
-          ...ev,
+          ...safeAdminEv,
           report_download_url: resolvedReportUrl,
           photo_download_urls: resolvedPhotoUrls,
         });
@@ -344,7 +346,8 @@ export const getAllAdminEventsServerFn = createServerFn({ method: "GET" }).handl
   for (const ev of allLocal) {
     if (!seenIds.has(ev.id)) {
       seenIds.add(ev.id);
-      allRecords.push(ev);
+      const { edit_token_hash: _omitHash, ...safeEv } = ev;
+      allRecords.push(safeEv);
     }
   }
 

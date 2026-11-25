@@ -46,6 +46,7 @@ export const eventSubmissionSchema = z
     photoFileNames: z.array(z.string().trim().min(1).max(180)).max(20),
     reportBase64: z.string().optional(),
     photoBase64s: z.array(z.string()).optional(),
+    editToken: z.string().min(16).max(128).optional(),
   })
   .superRefine((event, context) => {
     addEventDetailsIssues(event, context);

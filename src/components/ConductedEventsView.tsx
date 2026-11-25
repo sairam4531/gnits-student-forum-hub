@@ -24,6 +24,8 @@ import {
   saveClientEvent,
   saveClientAdminEvent,
   getClientAdminEvents,
+  getEventEditToken,
+  saveEventEditToken,
 } from "@/lib/client-portal-store";
 import { saveEventFile, compressImage } from "@/lib/event-file-storage";
 
@@ -260,7 +262,7 @@ export function ConductedEventsView({
       setSubmitError("Submitter contact details are required.");
       return;
     }
-    if (!reportFile && !existingReportName) {
+    if (!reportFile && !editingEventId && !existingReportName) {
       setSubmitError("Please upload the Event Report (PDF or Word format).");
       return;
     }
@@ -336,6 +338,8 @@ export function ConductedEventsView({
         finalPhotoUrls = safePhotoBase64s || [];
       }
 
+      const editToken = editingEventId ? getEventEditToken(editingEventId) : undefined;
+
       // 3. Commit to authoritative server database
       const res = await submitStudentEvent({
         data: {
@@ -355,12 +359,40 @@ export function ConductedEventsView({
           photoFileNames: finalPhotoNames,
           reportBase64: safeReportBase64,
           photoBase64s: safePhotoBase64s,
+          ...(editToken ? { editToken } : {}),
         },
       });
 
       if (!res?.success) {
         throw new Error("Server could not commit event to the authoritative database.");
       }
+
+      if (res.editToken) {
+        saveEventEditToken(res.id || submissionId, res.editToken);
+      }
+
+      saveClientAdminEvent(
+        {
+          id: res.id || submissionId,
+          club_slug: club.slug,
+          forum_slug: forumSlug,
+          event_name: eventName.trim(),
+          event_start: eventStart,
+          event_end: eventEnd,
+          resource_persons: resourcePersons.trim(),
+          submitter_name: submitterName.trim(),
+          submitter_email: submitterEmail.trim().toLowerCase(),
+          report_object_path: finalReportPath,
+          report_file_name: finalReportName,
+          report_content_type: finalReportType,
+          photo_object_paths: finalPhotoPaths,
+          photo_file_names: finalPhotoNames,
+          created_at: existingCreatedAt || new Date().toISOString(),
+          updated_at: editingEventId ? new Date().toISOString() : undefined,
+          photo_download_urls: finalPhotoUrls,
+        },
+        { broadcast: false },
+      );
 
       saveClientEvent(
         {
@@ -495,18 +527,16 @@ export function ConductedEventsView({
                     </span>
                   </div>
 
-                  {/* Edit and Resubmit Button - ONLY rendered for authenticated administrators */}
-                  {isAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => handleOpenEditModal(ev)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold border border-orange-200 transition-all hover:scale-102 cursor-pointer flex-shrink-0"
-                      title="Edit and resubmit updated details as Administrator"
-                    >
-                      <Edit3 className="h-3.5 w-3.5" />
-                      <span>Edit</span>
-                    </button>
-                  )}
+                  {/* Edit and Resubmit Button - Available in Student Portal & Admin Portal */}
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEditModal(ev)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold border border-orange-200 transition-all hover:scale-102 cursor-pointer flex-shrink-0"
+                    title="Edit and resubmit updated event details"
+                  >
+                    <Edit3 className="h-3.5 w-3.5" />
+                    <span>Edit</span>
+                  </button>
                 </div>
               </div>
             ))}

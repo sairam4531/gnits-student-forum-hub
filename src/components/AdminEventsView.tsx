@@ -93,35 +93,32 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
 
       const map = new Map<string, AdminEventRecord>();
 
-      // 1. First add server events
-      serverEvents.forEach((ev) => map.set(ev.id, ev));
+      // 1. Add client events first as fallback, then let authoritative serverEvents overwrite stale local entries
+      clientPublicEvents.forEach((pub) => {
+        map.set(pub.id, {
+          id: pub.id,
+          club_slug: pub.club_slug,
+          forum_slug: pub.forum_slug,
+          event_name: pub.event_name,
+          event_start: pub.event_start,
+          event_end: pub.event_end,
+          resource_persons: pub.resource_persons || "Not specified",
+          submitter_name: (pub as any).submitter_name || "Student Submitter",
+          submitter_email: (pub as any).submitter_email || "student@gnits.ac.in",
+          report_object_path: (pub as any).report_object_path || "",
+          report_file_name: (pub as any).report_file_name || "Event_Report.pdf",
+          report_content_type: (pub as any).report_content_type || "application/pdf",
+          photo_object_paths: (pub as any).photo_object_paths || [],
+          photo_file_names: (pub as any).photo_file_names || [],
+          photo_download_urls: (pub as any).photo_download_urls || [],
+          created_at: pub.created_at || new Date().toISOString(),
+        });
+      });
 
-      // 2. Add client admin events (overwrites with latest full details)
       clientAdminEvents.forEach((ev) => map.set(ev.id, ev));
 
-      // 3. Fallback: if an event is in clientPublicEvents, synthesize record so it always shows in Admin!
-      clientPublicEvents.forEach((pub) => {
-        if (!map.has(pub.id)) {
-          map.set(pub.id, {
-            id: pub.id,
-            club_slug: pub.club_slug,
-            forum_slug: pub.forum_slug,
-            event_name: pub.event_name,
-            event_start: pub.event_start,
-            event_end: pub.event_end,
-            resource_persons: pub.resource_persons || "Not specified",
-            submitter_name: (pub as any).submitter_name || "Student Submitter",
-            submitter_email: (pub as any).submitter_email || "student@gnits.ac.in",
-            report_object_path: (pub as any).report_object_path || "",
-            report_file_name: (pub as any).report_file_name || "Event_Report.pdf",
-            report_content_type: (pub as any).report_content_type || "application/pdf",
-            photo_object_paths: (pub as any).photo_object_paths || [],
-            photo_file_names: (pub as any).photo_file_names || [],
-            photo_download_urls: (pub as any).photo_download_urls || [],
-            created_at: pub.created_at || new Date().toISOString(),
-          });
-        }
-      });
+      // Server events are authoritative across browsers and sessions
+      serverEvents.forEach((ev) => map.set(ev.id, ev));
 
       // Deduplicate: Primary by ID, secondary by exact signature fallback (prevents dual-cached submissions)
       const finalEvents: AdminEventRecord[] = [];
@@ -190,16 +187,24 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
   }, [fetchAdminEvents]);
 
   // Load photos for an individual event from download URLs or IndexedDB
-  const loadPhotosForEvent = async (ev: AdminEventRecord) => {
-    if (loadingEventPhotos[ev.id]) return;
+  const loadPhotosForEvent = async (ev: AdminEventRecord): Promise<LoadedPhoto[]> => {
+    if (loadingEventPhotos[ev.id]) {
+      return eventPhotosMap[ev.id] || [];
+    }
     setLoadingEventPhotos((prev) => ({ ...prev, [ev.id]: true }));
 
     const photos: LoadedPhoto[] = [];
 
-    // 1. Direct download URLs (e.g. data URLs, CDN or Supabase URLs)
+    // 1. Direct download URLs (e.g. authenticated /api/event-file, data URLs, CDN or Supabase URLs)
     if (ev.photo_download_urls && ev.photo_download_urls.length > 0) {
       ev.photo_download_urls.forEach((url, i) => {
-        if (url) {
+        if (
+          url &&
+          (url.startsWith("/api/event-file") ||
+            url.startsWith("http") ||
+            url.startsWith("data:") ||
+            url.startsWith("blob:"))
+        ) {
           photos.push({
             url,
             name: ev.photo_file_names?.[i] || `Photo ${i + 1}`,
@@ -208,18 +213,17 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
       });
     }
 
-    // 2. Load from IndexedDB using photo_object_paths
+    // 2. Fallback to IndexedDB for any photo slots not already backed by server/data URLs
     if (ev.photo_object_paths && ev.photo_object_paths.length > 0) {
       for (let i = 0; i < ev.photo_object_paths.length; i++) {
         const p = ev.photo_object_paths[i];
         if (!p) continue;
+        const name = ev.photo_file_names?.[i] || `Photo ${i + 1}`;
+        if (photos[i]) continue;
         try {
           const url = await getEventFileUrl(p);
           if (url && !photos.some((ph) => ph.url === url)) {
-            photos.push({
-              url,
-              name: ev.photo_file_names?.[i] || `Photo ${i + 1}`,
-            });
+            photos.push({ url, name });
           }
         } catch (err) {
           console.warn("Could not read photo from IndexedDB:", p, err);
@@ -229,6 +233,7 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
 
     setEventPhotosMap((prev) => ({ ...prev, [ev.id]: photos }));
     setLoadingEventPhotos((prev) => ({ ...prev, [ev.id]: false }));
+    return photos;
   };
 
   // Open Photo Gallery Modal
@@ -239,9 +244,8 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
 
     let photos = eventPhotosMap[ev.id] || [];
     if (photos.length === 0) {
-      // Attempt load on demand
-      await loadPhotosForEvent(ev);
-      photos = eventPhotosMap[ev.id] || [];
+      // Attempt load on demand and use freshly returned array (avoid stale state closure)
+      photos = await loadPhotosForEvent(ev);
     }
     setGalleryPhotos(photos);
   };
@@ -255,16 +259,12 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
 
     setDeletingId(ev.id);
     try {
-      // 1. Delete from client admin and public persistent storage
+      // 1. Delete authoritatively on server first
+      await deleteAdminEventServerFn({ data: { id: ev.id } });
+
+      // 2. Clean up client caches & broadcast update across tabs
       deleteClientAdminEvent(ev.id);
       deleteClientEvent(ev.id);
-
-      // 2. Delete on server
-      try {
-        await deleteAdminEventServerFn({ data: { id: ev.id } });
-      } catch (serverErr) {
-        console.warn("Server delete note (deleted in local store):", serverErr);
-      }
 
       // 3. Remove from UI state
       setEvents((prev) => prev.filter((item) => item.id !== ev.id));
