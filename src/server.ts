@@ -49,9 +49,17 @@ function isH3SwallowedErrorBody(body: string): boolean {
 // twice and renders garbled.
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
-    (globalThis as unknown as { __cloudflareEnv?: unknown }).__cloudflareEnv = env;
-    if (env && typeof env === "object") {
-      for (const [key, value] of Object.entries(env)) {
+    const runtimeCf = (
+      request as unknown as {
+        runtime?: { cloudflare?: { env?: unknown; context?: unknown } };
+      }
+    ).runtime?.cloudflare;
+    const resolvedEnv = env ?? runtimeCf?.env;
+    const resolvedCtx = ctx ?? runtimeCf?.context;
+
+    (globalThis as unknown as { __cloudflareEnv?: unknown }).__cloudflareEnv = resolvedEnv;
+    if (resolvedEnv && typeof resolvedEnv === "object") {
+      for (const [key, value] of Object.entries(resolvedEnv)) {
         if (typeof value === "string" && !process.env[key]) {
           process.env[key] = value;
         }
@@ -59,7 +67,7 @@ export default {
     }
     try {
       const handler = await getServerEntry();
-      const response = await handler.fetch(request, env, ctx);
+      const response = await handler.fetch(request, resolvedEnv, resolvedCtx);
       return await normalizeCatastrophicSsrResponse(response);
     } catch (error) {
       console.error(error);

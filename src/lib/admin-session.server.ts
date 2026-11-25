@@ -15,11 +15,13 @@ export interface SessionPayload {
 function getAdminSessionSecret(): string {
   const g = globalThis as unknown as {
     __env__?: { ADMIN_SESSION_SECRET?: string };
+    __cloudflareEnv?: { ADMIN_SESSION_SECRET?: string };
     env?: { ADMIN_SESSION_SECRET?: string };
   };
   const secret =
     (typeof process !== "undefined" && process.env?.["ADMIN_SESSION_SECRET"]) ||
     g.__env__?.ADMIN_SESSION_SECRET ||
+    g.__cloudflareEnv?.ADMIN_SESSION_SECRET ||
     g.env?.ADMIN_SESSION_SECRET;
 
   if (!secret) {
