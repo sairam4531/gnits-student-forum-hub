@@ -93,43 +93,65 @@ export function ConductedEventsView({
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
 
   // Fetch conducted events for this forum from authoritative server
-  const fetchEvents = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await getPublicForumEvents({
-        data: {
-          clubSlug: club.slug,
-          forumSlug: forumSlug,
-        },
-      });
-
-      if (Array.isArray(data)) {
-        setEvents(data as PublicEvent[]);
-        data.forEach((e) => saveClientEvent(e as PublicEventRecord));
-      } else {
-        setEvents([]);
+  const fetchEvents = useCallback(
+    async (silent = false) => {
+      if (!silent) {
+        setLoading(true);
       }
-    } catch (err: unknown) {
-      console.warn("Could not load public events:", err);
-      const clientEvs = getClientEvents().filter(
-        (e) => e.club_slug === club.slug && e.forum_slug === forumSlug
-      );
-      setEvents(clientEvs as PublicEvent[]);
-    } finally {
-      setLoading(false);
-    }
-  }, [club.slug, forumSlug]);
+      setError(null);
+
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(
+            () => reject(new Error("Timed out loading forum events.")),
+            8000,
+          );
+        });
+
+        const data = await Promise.race([
+          getPublicForumEvents({
+            data: {
+              clubSlug: club.slug,
+              forumSlug: forumSlug,
+            },
+          }),
+          timeoutPromise,
+        ]);
+
+        if (Array.isArray(data)) {
+          setEvents(data as PublicEvent[]);
+          data.forEach((e) => saveClientEvent(e as PublicEventRecord, { broadcast: false }));
+        } else {
+          setEvents([]);
+        }
+      } catch (err: unknown) {
+        console.warn("Could not load public events:", err);
+        const clientEvs = getClientEvents().filter(
+          (e) => e.club_slug === club.slug && e.forum_slug === forumSlug,
+        );
+        setEvents(clientEvs as PublicEvent[]);
+      } finally {
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
+        }
+        setLoading(false);
+      }
+    },
+    [club.slug, forumSlug],
+  );
 
   useEffect(() => {
-    fetchEvents();
+    fetchEvents(false);
 
     let bc: BroadcastChannel | null = null;
     try {
       if (typeof window !== "undefined" && "BroadcastChannel" in window) {
         bc = new BroadcastChannel("gnits_portal_sync_channel");
-        bc.onmessage = () => {
-          fetchEvents();
+        bc.onmessage = (event: MessageEvent<{ type?: string }>) => {
+          if (!event.data?.type || event.data.type === "EVENTS") {
+            fetchEvents(true);
+          }
         };
       }
     } catch {
@@ -137,8 +159,11 @@ export function ConductedEventsView({
     }
 
     const handleStorage = (e: StorageEvent) => {
-      if (e.key?.startsWith("GNITS_")) {
-        fetchEvents();
+      if (
+        e.key === "GNITS_EVENTS_PERSISTENT_DATA_V2" ||
+        e.key === "GNITS_DELETED_ITEMS_TRACKER_V2"
+      ) {
+        fetchEvents(true);
       }
     };
     window.addEventListener("storage", handleStorage);
@@ -337,9 +362,23 @@ export function ConductedEventsView({
         throw new Error("Server could not commit event to the authoritative database.");
       }
 
+      saveClientEvent(
+        {
+          id: res.id || submissionId,
+          club_slug: club.slug,
+          forum_slug: forumSlug,
+          event_name: eventName.trim(),
+          event_start: eventStart,
+          event_end: eventEnd,
+          created_at: existingCreatedAt || new Date().toISOString(),
+          resource_persons: resourcePersons.trim(),
+        },
+        { broadcast: true },
+      );
+
       setSubmitSuccess(true);
-      // Refresh authoritative events list from server
-      await fetchEvents();
+      // Refresh authoritative events list silently from server
+      await fetchEvents(true);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to submit event to Admin.";
       setSubmitError(msg);

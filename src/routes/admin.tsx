@@ -104,8 +104,10 @@ function AdminPage() {
     try {
       if (typeof window !== "undefined" && "BroadcastChannel" in window) {
         bc = new BroadcastChannel("gnits_portal_sync_channel");
-        bc.onmessage = () => {
-          loadHomepageData();
+        bc.onmessage = (event: MessageEvent<{ type?: string }>) => {
+          if (event.data?.type === "HOMEPAGE") {
+            loadHomepageData();
+          }
         };
       }
     } catch {
@@ -113,7 +115,10 @@ function AdminPage() {
     }
 
     const handleStorage = (e: StorageEvent) => {
-      if (e.key?.startsWith("GNITS_")) {
+      if (
+        e.key === "GNITS_HOMEPAGE_PERSISTENT_DATA_V2" ||
+        e.key === "GNITS_DELETED_ITEMS_TRACKER_V2"
+      ) {
         loadHomepageData();
       }
     };

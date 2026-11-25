@@ -62,8 +62,10 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
   // Deleting state
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const fetchAdminEvents = useCallback(async () => {
-    setLoading(true);
+  const fetchAdminEvents = useCallback(async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+    }
     setError(null);
     try {
       let serverEvents: AdminEventRecord[] = [];
@@ -154,14 +156,16 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
   }, [club.slug, forumSlug]);
 
   useEffect(() => {
-    fetchAdminEvents();
+    fetchAdminEvents(false);
 
     let bc: BroadcastChannel | null = null;
     try {
       if (typeof window !== "undefined" && "BroadcastChannel" in window) {
         bc = new BroadcastChannel("gnits_portal_sync_channel");
-        bc.onmessage = () => {
-          fetchAdminEvents();
+        bc.onmessage = (event: MessageEvent<{ type?: string }>) => {
+          if (!event.data?.type || event.data.type === "EVENTS") {
+            fetchAdminEvents(true);
+          }
         };
       }
     } catch {
@@ -169,8 +173,12 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
     }
 
     const handleStorage = (e: StorageEvent) => {
-      if (e.key?.startsWith("GNITS_")) {
-        fetchAdminEvents();
+      if (
+        e.key === "GNITS_EVENTS_PERSISTENT_DATA_V2" ||
+        e.key === "GNITS_ADMIN_EVENTS_PERSISTENT_DATA_V2" ||
+        e.key === "GNITS_DELETED_ITEMS_TRACKER_V2"
+      ) {
+        fetchAdminEvents(true);
       }
     };
     window.addEventListener("storage", handleStorage);

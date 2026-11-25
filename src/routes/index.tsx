@@ -110,7 +110,7 @@ function StudentAffairsPortalPage() {
           for (const ev of events) {
             if (!combined.some((c) => c.id === ev.id)) {
               combined.push(ev);
-              saveClientEvent(ev);
+              saveClientEvent(ev, { broadcast: false });
             }
           }
           setRecentEvents(combined);

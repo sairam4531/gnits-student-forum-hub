@@ -353,13 +353,19 @@ export function getClientEvents(): PublicEventRecord[] {
   }
 }
 
-export function saveClientEvent(event: PublicEventRecord): void {
+export function saveClientEvent(
+  event: PublicEventRecord,
+  options: { broadcast?: boolean } = {},
+): void {
   if (!isClient()) return;
   try {
     const current = getClientEvents();
     const existingIdx = current.findIndex((e) => e.id === event.id);
-    const updated = [...current];
+    if (existingIdx >= 0 && JSON.stringify(current[existingIdx]) === JSON.stringify(event)) {
+      return;
+    }
 
+    const updated = [...current];
     if (existingIdx >= 0) {
       updated[existingIdx] = event;
     } else {
@@ -367,7 +373,9 @@ export function saveClientEvent(event: PublicEventRecord): void {
     }
 
     localStorage.setItem(EVENTS_KEY, JSON.stringify(updated));
-    broadcastUpdate("EVENTS");
+    if (options.broadcast !== false) {
+      broadcastUpdate("EVENTS");
+    }
   } catch {
     // ignore
   }
@@ -407,13 +415,19 @@ export function getClientAdminEvents(): AdminEventRecord[] {
   }
 }
 
-export function saveClientAdminEvent(event: AdminEventRecord): void {
+export function saveClientAdminEvent(
+  event: AdminEventRecord,
+  options: { broadcast?: boolean } = {},
+): void {
   if (!isClient()) return;
   try {
     const current = getClientAdminEvents();
     const existingIdx = current.findIndex((e) => e.id === event.id);
-    const updated = [...current];
+    if (existingIdx >= 0 && JSON.stringify(current[existingIdx]) === JSON.stringify(event)) {
+      return;
+    }
 
+    const updated = [...current];
     if (existingIdx >= 0) {
       updated[existingIdx] = event;
     } else {
@@ -421,7 +435,9 @@ export function saveClientAdminEvent(event: AdminEventRecord): void {
     }
 
     localStorage.setItem(ADMIN_EVENTS_KEY, JSON.stringify(updated));
-    broadcastUpdate("EVENTS");
+    if (options.broadcast !== false) {
+      broadcastUpdate("EVENTS");
+    }
   } catch {
     // ignore
   }
