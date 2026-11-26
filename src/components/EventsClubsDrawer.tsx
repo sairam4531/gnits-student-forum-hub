@@ -87,9 +87,6 @@ export function EventsClubsDrawer({
   // Sub-accordion state inside Student Forums: None expanded initially
   const [expandedForumCat, setExpandedForumCat] = useState<string | null>(null);
 
-  // Inline AY accordion state inside search results for institutional events
-  const [expandedSearchEvent, setExpandedSearchEvent] = useState<string | null>(null);
-
   if (!isOpen) return null;
 
   const institutionalClub =
@@ -189,14 +186,14 @@ export function EventsClubsDrawer({
   ];
 
   const handleSelect = (club: ForumClub, forumName: string) => {
-    const slug = toSlug(forumName);
-    onSelectForum(club, forumName, slug);
-    onClose();
-  };
-
-  const handleSelectInstitutionalAy = (eventName: string, ay: AcademicYear) => {
-    const slug = institutionalForumSlugWithAy(eventName, ay);
-    onSelectForum(institutionalClub as ForumClub, eventName, slug, ay);
+    if (isInstitutionalClub(club.slug)) {
+      const defaultAy = ACADEMIC_YEARS[0];
+      const slug = institutionalForumSlugWithAy(forumName, defaultAy);
+      onSelectForum(club, forumName, slug, defaultAy);
+    } else {
+      const slug = toSlug(forumName);
+      onSelectForum(club, forumName, slug);
+    }
     onClose();
   };
 
@@ -304,61 +301,22 @@ export function EventsClubsDrawer({
                   <p className="text-sm font-semibold">No events match "{searchTerm}"</p>
                 </div>
               ) : (
-                searchResults.map((item, idx) => {
-                  const isInst = isInstitutionalClub(item.club.slug);
-                  const isSearchExpanded = isInst && expandedSearchEvent === item.name;
-                  return (
-                    <div key={`${item.name}-${idx}`} className="rounded-lg border border-slate-100 bg-white overflow-hidden">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (isInst) {
-                            setExpandedSearchEvent((prev) =>
-                              prev === item.name ? null : item.name,
-                            );
-                          } else {
-                            handleSelect(item.club as ForumClub, item.name);
-                          }
-                        }}
-                        className="w-full flex items-center justify-between p-2.5 bg-white hover:bg-orange-50/80 hover:text-orange-700 transition-colors text-left cursor-pointer"
-                      >
-                        <div>
-                          <span className="text-[11px] font-bold text-orange-600 uppercase tracking-wider block">
-                            {item.group}
-                          </span>
-                          <span className="text-sm font-semibold text-slate-900">{item.name}</span>
-                        </div>
-                        {isInst ? (
-                          isSearchExpanded ? (
-                            <ChevronDown className="h-4 w-4 text-orange-600" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4 text-orange-500" />
-                          )
-                        ) : (
-                          <span className="text-orange-500 font-bold">➤</span>
-                        )}
-                      </button>
-
-                      {isSearchExpanded && (
-                        <div className="bg-slate-50 pl-4 pr-2.5 py-1.5 space-y-1 border-t border-slate-100">
-                          {ACADEMIC_YEARS.map((ay) => (
-                            <button
-                              key={ay}
-                              type="button"
-                              onClick={() => handleSelectInstitutionalAy(item.name, ay)}
-                              className="w-full flex items-center gap-2 py-1.5 text-left text-sm text-slate-700 hover:text-orange-600 transition-colors group cursor-pointer"
-                            >
-                              <span className="text-xs text-orange-500 font-bold flex-shrink-0">
-                                ➤
-                              </span>
-                              <span className="font-semibold">{ay}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                searchResults.map((item, idx) => (
+                  <button
+                    key={`${item.name}-${idx}`}
+                    type="button"
+                    onClick={() => handleSelect(item.club as ForumClub, item.name)}
+                    className="w-full flex items-center justify-between p-2.5 rounded-lg border border-slate-100 bg-white hover:bg-orange-50/80 hover:text-orange-700 transition-colors text-left cursor-pointer"
+                  >
+                    <div>
+                      <span className="text-[11px] font-bold text-orange-600 uppercase tracking-wider block">
+                        {item.group}
+                      </span>
+                      <span className="text-sm font-semibold text-slate-900">{item.name}</span>
                     </div>
-                  );
-                })
+                    <span className="text-orange-500 font-bold">➤</span>
+                  </button>
+                ))
               )}
             </div>
           ) : (
@@ -395,17 +353,15 @@ export function EventsClubsDrawer({
                     <button
                       type="button"
                       onClick={() => toggleEvent(item.name)}
-                      className={`w-full flex items-center justify-between px-4 py-3 text-[15px] transition-all text-left cursor-pointer ${
-                        isExpanded
-                          ? "bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold shadow-xs"
-                          : "bg-white text-slate-900 hover:bg-slate-50 font-semibold"
-                      }`}
+                      className={`w-full flex items-center justify-between px-4 py-3 text-[15px] transition-all text-left cursor-pointer ${isExpanded
+                        ? "bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold shadow-xs"
+                        : "bg-white text-slate-900 hover:bg-slate-50 font-semibold"
+                        }`}
                     >
                       <div className="flex items-center gap-3 min-w-0 pr-1">
                         <IconComp
-                          className={`h-5 w-5 flex-shrink-0 ${
-                            isExpanded ? "text-white" : "text-slate-600"
-                          }`}
+                          className={`h-5 w-5 flex-shrink-0 ${isExpanded ? "text-white" : "text-slate-600"
+                            }`}
                         />
                         <span className="truncate tracking-tight font-semibold">
                           {item.name}
@@ -433,11 +389,10 @@ export function EventsClubsDrawer({
                               <button
                                 type="button"
                                 onClick={() => toggleForumCat(cat.title)}
-                                className={`w-full flex items-center justify-between pl-7 pr-4 py-2.5 text-sm text-left transition-colors cursor-pointer ${
-                                  isCatExpanded
-                                    ? "bg-orange-100/70 text-orange-950 font-bold"
-                                    : "hover:bg-slate-100 text-slate-700 font-semibold"
-                                }`}
+                                className={`w-full flex items-center justify-between pl-7 pr-4 py-2.5 text-sm text-left transition-colors cursor-pointer ${isCatExpanded
+                                  ? "bg-orange-100/70 text-orange-950 font-bold"
+                                  : "hover:bg-slate-100 text-slate-700 font-semibold"
+                                  }`}
                               >
                                 <div className="flex items-center gap-2.5 min-w-0">
                                   <cat.icon className="h-4 w-4 text-orange-600 flex-shrink-0" />
@@ -477,54 +432,21 @@ export function EventsClubsDrawer({
                 );
               }
 
-              /* 2. Institutional Events (all events except Student Forums): Expand into AY:2023-24 .. AY:2027-28 */
-              const isEventExpanded = expandedEvent === item.name;
+              /* 2. Institutional Events (direct navigation; AY selection is shown on the event page) */
               return (
                 <div key={item.name} className="bg-white">
                   <button
                     type="button"
-                    onClick={() => toggleEvent(item.name)}
-                    className={`w-full flex items-center justify-between px-4 py-3 text-[15px] transition-all text-left cursor-pointer group ${
-                      isEventExpanded
-                        ? "bg-orange-50 text-orange-800 font-bold"
-                        : "bg-white text-slate-900 hover:bg-orange-50/70 hover:text-orange-700 font-semibold"
-                    }`}
+                    onClick={() => handleSelect(institutionalClub as ForumClub, item.name)}
+                    className="w-full flex items-center justify-between px-4 py-3 bg-white text-slate-900 hover:bg-orange-50/70 hover:text-orange-700 text-[15px] font-semibold transition-all text-left cursor-pointer group"
                   >
                     <div className="flex items-center gap-3 min-w-0 pr-1">
-                      <IconComp
-                        className={`h-5 w-5 flex-shrink-0 transition-colors ${
-                          isEventExpanded
-                            ? "text-orange-600"
-                            : "text-slate-600 group-hover:text-orange-600"
-                        }`}
-                      />
+                      <IconComp className="h-5 w-5 flex-shrink-0 text-slate-600 group-hover:text-orange-600 transition-colors" />
                       <span className="truncate tracking-tight">{item.name}</span>
                     </div>
 
-                    {isEventExpanded ? (
-                      <ChevronDown className="h-4 w-4 text-orange-600 flex-shrink-0" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-orange-600 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
-                    )}
+                    <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-orange-600 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
                   </button>
-
-                  {isEventExpanded && (
-                    <div className="bg-slate-50/90 pl-8 pr-4 py-1.5 space-y-1 border-l-2 border-orange-400 ml-6 my-1 animate-in slide-in-from-top-1 duration-150">
-                      {ACADEMIC_YEARS.map((ay) => (
-                        <button
-                          key={ay}
-                          type="button"
-                          onClick={() => handleSelectInstitutionalAy(item.name, ay)}
-                          className="w-full flex items-center gap-2 py-1.5 text-sm text-left text-slate-700 hover:text-orange-600 transition-colors group cursor-pointer"
-                        >
-                          <span className="text-xs text-orange-500 font-bold flex-shrink-0 group-hover:translate-x-0.5 transition-transform">
-                            ➤
-                          </span>
-                          <span className="truncate font-semibold">{ay}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
               );
             })

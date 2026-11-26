@@ -167,7 +167,7 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
     expect(screen.getByRole("button", { name: /delete event/i })).toBeTruthy();
   });
 
-  it("shows AY:2023-24..AY:2027-28 under non-Student-Forum events in both user and admin drawers without touching Student Forums", async () => {
+  it("navigates directly on non-Student-Forum sidebar events without rendering AY items in the drawer while keeping Student Forums untouched", async () => {
     for (const isAdmin of [false, true]) {
       const onSelectForum = vi.fn();
       const onClose = vi.fn();
@@ -180,7 +180,7 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
         />,
       );
 
-      // Click an institutional event ("Annual day")
+      // Click an institutional event ("Annual day") — navigates directly with no AY list in sidebar
       fireEvent.click(await screen.findByRole("button", { name: /annual day/i }));
       for (const ay of [
         "AY:2023-24",
@@ -189,16 +189,15 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
         "AY:2026-27",
         "AY:2027-28",
       ]) {
-        expect(screen.getByRole("button", { name: new RegExp(ay, "i") })).toBeTruthy();
+        expect(screen.queryByRole("button", { name: new RegExp(ay, "i") })).toBeNull();
       }
-
-      fireEvent.click(screen.getByRole("button", { name: /AY:2025-26/i }));
       expect(onSelectForum).toHaveBeenCalledWith(
         expect.objectContaining({ slug: "institutional-events" }),
         "Annual day",
-        "annual-day--ay-2025-26",
-        "AY:2025-26",
+        "annual-day--ay-2023-24",
+        "AY:2023-24",
       );
+      expect(onClose).toHaveBeenCalled();
 
       // Student Forums stays untouched (expands into Technical Clubs, etc., without AY items)
       fireEvent.click(screen.getByRole("button", { name: /student forums/i }));
