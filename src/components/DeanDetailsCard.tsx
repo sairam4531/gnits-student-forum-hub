@@ -21,17 +21,17 @@ export function DeanDetailsCard({ dean }: DeanDetailsCardProps) {
   }, [photoUrl]);
 
   return (
-    <div className="w-full py-4">
+    <div className="w-full py-2">
       {/* Title with centered underline matching design */}
-      <div className="text-center mb-8">
+      <div className="text-center mb-5">
         <h2 className="text-2xl sm:text-3xl font-black text-[#0f2757] tracking-tight">
           Dean - Student Affairs Profile
         </h2>
-        <div className="w-14 h-1 bg-[#0f2757] mx-auto mt-2.5 rounded-full" />
+        <div className="w-14 h-1 bg-[#0f2757] mx-auto mt-2 rounded-full" />
       </div>
 
       {/* Clean White Card with ONLY the requested data */}
-      <div className="max-w-2xl mx-auto rounded-2xl bg-white border border-slate-200/90 shadow-sm p-6 sm:p-8 flex flex-col sm:flex-row items-center gap-6 sm:gap-8">
+      <div className="w-full rounded-2xl bg-white border border-slate-200/90 shadow-sm p-5 sm:p-6 flex flex-col sm:flex-row items-center gap-6 sm:gap-8">
         {/* Left Side: Photo Frame with "Dean Photo" */}
         <div className="w-36 h-40 sm:w-40 sm:h-44 rounded-2xl border border-slate-300 flex flex-col items-center justify-center p-3 bg-slate-50/50 flex-shrink-0 overflow-hidden shadow-2xs">
           {photoUrl && !imageError ? (

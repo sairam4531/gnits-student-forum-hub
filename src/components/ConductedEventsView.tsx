@@ -465,10 +465,10 @@ export function ConductedEventsView({
   return (
     <div
       id="forum-events-section"
-      className="mt-8 rounded-3xl border border-primary/40 bg-card p-6 sm:p-8 shadow-xl animate-in fade-in zoom-in-95 duration-300"
+      className="w-full rounded-2xl border border-primary/30 bg-card p-4 sm:p-6 shadow-sm animate-in fade-in zoom-in-95 duration-300"
     >
       {/* Header Bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-border">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-border">
         <div>
           <div className="flex items-center gap-2 text-xs font-bold text-primary uppercase tracking-wider">
             <span>{club.name}</span>
@@ -515,9 +515,9 @@ export function ConductedEventsView({
       </div>
 
       {/* Events Grid */}
-      <div className="pt-6">
+      <div className="pt-4">
         {loading ? (
-          <div className="flex items-center justify-center py-12 gap-3 text-muted-foreground">
+          <div className="flex items-center justify-center py-8 gap-3 text-muted-foreground">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
             <span className="text-sm font-medium">Loading events...</span>
           </div>
@@ -527,11 +527,11 @@ export function ConductedEventsView({
             <span>{error}</span>
           </div>
         ) : events.length === 0 ? (
-          <div className="text-center py-12 px-4 rounded-2xl border border-dashed border-border bg-muted/20">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <Calendar className="h-7 w-7" />
+          <div className="text-center py-8 px-4 rounded-2xl border border-dashed border-border bg-muted/20">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <Calendar className="h-6 w-6" />
             </div>
-            <h4 className="mt-4 text-base font-bold text-foreground">
+            <h4 className="mt-3 text-base font-bold text-foreground">
               No conducted events posted yet for {forumName}
             </h4>
             <p className="mt-1 text-xs sm:text-sm text-muted-foreground max-w-md mx-auto">
@@ -541,14 +541,14 @@ export function ConductedEventsView({
             <button
               type="button"
               onClick={handleOpenNewModal}
-              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
+              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
             >
               <PlusCircle className="h-4 w-4" />
               <span>Submit First Event Report</span>
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {events.map((ev) => (
               <div
                 key={ev.id}

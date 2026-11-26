@@ -241,9 +241,9 @@ function StudentAffairsPortalPage() {
         <section
           id="dean-profile-section"
           aria-label="Dean's Directorate Profile"
-          className="w-full bg-[#f8faff] py-12 sm:py-16 md:py-20 border-t border-slate-200/80"
+          className="w-full bg-[#f8faff] py-6 sm:py-8 border-t border-slate-200/80"
         >
-          <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+          <div className="w-full px-4 sm:px-6 lg:px-8">
             <DeanDetailsCard
               dean={dean}
               onOpenEventsDrawer={() => setIsDrawerOpen(true)}

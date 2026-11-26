@@ -425,10 +425,10 @@ export function AdminEventsView({
   return (
     <div
       id="admin-forum-events-section"
-      className="mt-8 rounded-3xl border border-primary/50 bg-card p-6 sm:p-8 shadow-2xl animate-in fade-in zoom-in-95 duration-300"
+      className="w-full rounded-2xl border border-primary/30 bg-card p-4 sm:p-6 shadow-sm animate-in fade-in zoom-in-95 duration-300"
     >
       {/* Header with Forum Information and Global Export */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-6 border-b border-border">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-border">
         <div>
           <div className="flex items-center gap-2 text-xs font-bold text-primary uppercase tracking-wider">
             <span>ADMIN REVIEW CONSOLE</span>
@@ -481,9 +481,9 @@ export function AdminEventsView({
       </div>
 
       {/* Events Body */}
-      <div className="pt-6">
+      <div className="pt-4">
         {loading ? (
-          <div className="flex items-center justify-center py-12 gap-3 text-muted-foreground">
+          <div className="flex items-center justify-center py-8 gap-3 text-muted-foreground">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
             <span className="text-sm font-medium">Loading submitted events from user side...</span>
           </div>
@@ -493,11 +493,11 @@ export function AdminEventsView({
             <span>{error}</span>
           </div>
         ) : events.length === 0 ? (
-          <div className="text-center py-12 px-4 rounded-2xl border border-dashed border-border bg-muted/20">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-              <Calendar className="h-7 w-7" />
+          <div className="text-center py-8 px-4 rounded-2xl border border-dashed border-border bg-muted/20">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <Calendar className="h-6 w-6" />
             </div>
-            <h4 className="mt-4 text-base font-bold text-foreground">
+            <h4 className="mt-3 text-base font-bold text-foreground">
               No events submitted for {forumName} yet
             </h4>
             <p className="mt-1 text-xs sm:text-sm text-muted-foreground max-w-md mx-auto">

@@ -409,7 +409,7 @@ function AdminPage() {
       />
 
       {/* Main Admin Dashboard: Video Showcase (with Edit Video button) + Dean Details ONLY */}
-      <main className="flex-1 bg-white pb-16">
+      <main className="flex-1 bg-white pb-6">
         <div className="w-full bg-white">
           {/* 1. College Dashboard Video Showcase + Edit Video button */}
           <section
@@ -427,9 +427,9 @@ function AdminPage() {
           <section
             id="admin-dean-profile-section"
             aria-label="Dean Details"
-            className="w-full bg-white py-10 sm:py-14"
+            className="w-full bg-white py-6 sm:py-8"
           >
-            <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+            <div className="w-full px-4 sm:px-6 lg:px-8">
               <DeanDetailsManage
                 dean={currentDean}
                 onRefresh={loadHomepageData}

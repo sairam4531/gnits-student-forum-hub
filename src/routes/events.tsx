@@ -225,7 +225,7 @@ function DedicatedEventPage() {
 
       {/* 2. Breadcrumb & Navigation Bar */}
       <div className="bg-white border-b border-slate-200 shadow-2xs sticky top-18 sm:top-20 z-30">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-4">
+        <div className="w-full px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm font-semibold text-slate-600 truncate">
             {isAdmin ? (
               <Link
@@ -269,12 +269,12 @@ function DedicatedEventPage() {
         </div>
       </div>
 
-      {/* 3. Main Dedicated Event Content */}
-      <main className="flex-1 py-8 sm:py-10">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-          <div className="rounded-3xl bg-white p-6 sm:p-8 md:p-10 border border-slate-200 shadow-xl animate-in fade-in duration-200">
+      {/* 3. Main Dedicated Event Content - Full Width Layout */}
+      <main className="flex-1 w-full bg-white">
+        <div className="w-full px-4 sm:px-6 py-4">
+          <div className="w-full animate-in fade-in duration-200">
             {isInstitutional && (
-              <div className="mb-6 pb-5 border-b border-slate-200">
+              <div className="mb-4 pb-3 border-b border-slate-200">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
                     <span className="text-[11px] font-bold uppercase tracking-wider text-orange-600 block">
@@ -308,11 +308,11 @@ function DedicatedEventPage() {
             )}
 
             {isInstitutional && !selectedAy ? (
-              <div className="py-10 text-center space-y-5">
+              <div className="py-6 text-center space-y-4">
                 <p className="text-sm font-semibold text-slate-600">
                   Please choose an Academic Year above to view or manage {forumName} events.
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 max-w-4xl mx-auto">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 w-full">
                   {ACADEMIC_YEARS.map((ay) => (
                     <button
                       key={ay}
