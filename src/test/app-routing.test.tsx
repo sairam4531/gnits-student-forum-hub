@@ -258,10 +258,10 @@ describe("App routing", () => {
     // Simulate a stale Edge browser cache holding an old Dean spelling
     saveClientDeanDetails({
       id: "dean-1",
-      name: "Dr. Aparna Palle",
+      name: "Dr. Aparna Patle",
       designation: "Dean, Student Affairs & Professor",
       profile_photo: "",
-      email: "aparna.palle@gnits.ac.in",
+      email: "aparna.patle@gnits.ac.in",
       contact_number: "GNITS",
       office: "GNITS",
       updated_at: "2026-11-20T00:00:00.000Z",
@@ -285,20 +285,20 @@ describe("App routing", () => {
       ],
       dean: {
         id: "dean-1",
-        name: "Dr. Aparna Patle",
+        name: "Dr. Aparna Palle",
         designation: "Dean, Student Affairs & Professor",
         profile_photo: "",
-        email: "aparna.patle@gnits.ac.in",
+        email: "palle.aparna@gnits.ac.in",
         contact_number: "Dean – Student Affairs, GNITS, Hyderabad",
         office: "Dean – Student Affairs, GNITS, Hyderabad",
         updated_at: "2026-11-25T10:00:00.000Z",
       },
     });
 
-    expect(merged.dean.name).toBe("Dr. Aparna Patle");
-    expect(merged.dean.email).toBe("aparna.patle@gnits.ac.in");
+    expect(merged.dean.name).toBe("Dr. Aparna Palle");
+    expect(merged.dean.email).toBe("palle.aparna@gnits.ac.in");
     expect(merged.videos).toHaveLength(1);
-    expect(getClientHomepageData().dean.name).toBe("Dr. Aparna Patle");
-    expect(localStorage.getItem(HOMEPAGE_KEY)).toContain("Dr. Aparna Patle");
+    expect(getClientHomepageData().dean.name).toBe("Dr. Aparna Palle");
+    expect(localStorage.getItem(HOMEPAGE_KEY)).toContain("Dr. Aparna Palle");
   });
 });

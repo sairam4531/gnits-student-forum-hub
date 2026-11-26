@@ -80,10 +80,10 @@ const DEFAULT_CLIENT_DATA: ClientHomepageData = {
   videos: [],
   dean: {
     id: "dean-1",
-    name: "Dr. Aparna Patle",
+    name: "Dr. Aparna Palle",
     designation: "Dean, Student Affairs & Professor",
     profile_photo: "",
-    email: "aparna.patle@gnits.ac.in",
+    email: "palle.aparna@gnits.ac.in",
     contact_number: "Dean – Student Affairs, GNITS, Hyderabad",
     office: "Dean – Student Affairs, GNITS, Hyderabad",
     updated_at: new Date().toISOString(),

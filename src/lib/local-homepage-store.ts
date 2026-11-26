@@ -113,13 +113,13 @@ const DEFAULT_HOMEPAGE_DATA: HomepageDataStore = {
   videos: [],
   dean: {
     id: "dean-1",
-    name: "Dr. Aparna Patle",
+    name: "Dr. Aparna Palle",
     designation: "Dean, Student Affairs & Professor",
     profile_photo: "",
-    email: "aparna.patle@gnits.ac.in",
+    email: "palle.aparna@gnits.ac.in",
     contact_number: "Dean – Student Affairs, GNITS, Hyderabad",
     office: "Dean – Student Affairs, GNITS, Hyderabad",
-    updated_at: "2026-11-22T19:42:00.000Z",
+    updated_at: "2026-11-26T12:00:00.000Z",
   },
 };
 
@@ -387,14 +387,19 @@ export async function saveHomepageStoreAsync(data: HomepageDataStore): Promise<v
   // 1. Keep local memory and disk in sync for fallback
   saveHomepageStore(data);
 
-  // 2. If running on Cloudflare Workers, persist to KV
+  // 2. Persist to KV (Cloudflare native binding or REST API bridge)
   try {
     const cfKv = getCloudflareKVNamespace();
     if (cfKv && typeof cfKv.put === "function") {
-      await cfKv.put("homepage_store", JSON.stringify(data));
+      const payload = JSON.stringify(data);
+      console.log(`[saveHomepageStoreAsync] Writing homepage_store to KV (${payload.length} bytes)`);
+      await cfKv.put("homepage_store", payload);
+      console.log("[saveHomepageStoreAsync] KV write succeeded");
+    } else {
+      console.warn("[saveHomepageStoreAsync] No KV binding available — data saved to memory/disk only");
     }
   } catch (err) {
-    console.warn("Could not persist homepage store to Cloudflare KV:", err);
+    console.error("[saveHomepageStoreAsync] KV write FAILED:", err);
     throw new Error("Could not save homepage data to cloud storage. Please try again.");
   }
 }
