@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import defaultHomepageJson from "../../data/homepage.json";
 
 export interface HomepagePhoto {
   id: string;
@@ -60,66 +61,23 @@ declare global {
 }
 
 const DEFAULT_HOMEPAGE_DATA: HomepageDataStore = {
-  photos: [
-    {
-      id: "photo-1",
-      title: "Scenic Mountain & Sunrise Campus Vista",
-      description: "Inspiring morning view of the sprawling GNITS academic atmosphere.",
-      image_url: "/assets/student-forum-dance-01.jpg",
-      category: "Campus",
-      is_active: true,
-      is_featured: true,
-      display_order: 1,
-      created_at: "2026-11-20T10:00:00.000Z",
-      updated_at: "2026-11-20T10:00:00.000Z",
-    },
-    {
-      id: "photo-2",
-      title: "GNITS Green Campus & Academic Quad",
-      description: "Lush campus avenue surrounded by serene trees and modern infrastructure.",
-      image_url: "/assets/student-forum-team-02.webp",
-      category: "Campus",
-      is_active: true,
-      is_featured: true,
-      display_order: 2,
-      created_at: "2026-11-19T09:30:00.000Z",
-      updated_at: "2026-11-19T09:30:00.000Z",
-    },
-    {
-      id: "photo-3",
-      title: "Annual Fest & Cultural Stage Celebrations",
-      description: "Student Council forum performances celebrating creativity, talent, and youth.",
-      image_url: "/assets/student-forum-stage-04.webp",
-      category: "Events",
-      is_active: true,
-      is_featured: false,
-      display_order: 3,
-      created_at: "2026-11-18T14:15:00.000Z",
-      updated_at: "2026-11-18T14:15:00.000Z",
-    },
-    {
-      id: "photo-4",
-      title: "Technical Innovation & Robotics Hackathon",
-      description: "Women engineers collaborating on cutting-edge AI and hardware prototypes.",
-      image_url: "/assets/student-forum-team-03.webp",
-      category: "Clubs",
-      is_active: true,
-      is_featured: false,
-      display_order: 4,
-      created_at: "2026-11-17T11:00:00.000Z",
-      updated_at: "2026-11-17T11:00:00.000Z",
-    },
-  ],
-  videos: [],
+  photos: Array.isArray(defaultHomepageJson.photos)
+    ? (defaultHomepageJson.photos as HomepagePhoto[])
+    : [],
+  videos: Array.isArray(defaultHomepageJson.videos)
+    ? (defaultHomepageJson.videos as HomepageVideo[])
+    : [],
   dean: {
-    id: "dean-1",
-    name: "Dr. Aparna Palle",
-    designation: "Dean, Student Affairs & Professor",
-    profile_photo: "",
-    email: "palle.aparna@gnits.ac.in",
-    contact_number: "Dean – Student Affairs, GNITS, Hyderabad",
-    office: "Dean – Student Affairs, GNITS, Hyderabad",
-    updated_at: "2026-11-26T12:00:00.000Z",
+    id: defaultHomepageJson.dean?.id || "dean-1",
+    name: defaultHomepageJson.dean?.name || "Dr. Aparna Palle",
+    designation:
+      defaultHomepageJson.dean?.designation || "Dean, Student Affairs & Professor",
+    profile_photo: defaultHomepageJson.dean?.profile_photo || "",
+    email: defaultHomepageJson.dean?.email || "palle.aparna@gnits.ac.in",
+    contact_number:
+      defaultHomepageJson.dean?.contact_number || "Dean – Student Affairs, GNITS, Hyderabad",
+    office: defaultHomepageJson.dean?.office || "Dean – Student Affairs, GNITS, Hyderabad",
+    updated_at: defaultHomepageJson.dean?.updated_at || "2026-11-26T12:00:00.000Z",
   },
 };
 
