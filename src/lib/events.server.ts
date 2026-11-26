@@ -6,6 +6,8 @@ import {
   buildEventFileDownloadUrl,
   getEventFileFromKv,
   getEventsStoreAsync,
+  hasEventFileInKv,
+  hasLocalEventFile,
   saveEventFileToKv,
   saveEventsStoreAsync,
   saveFileLocally,
@@ -191,6 +193,19 @@ export async function processStudentEventSubmission(
     } else if (hasCfKv && !supabaseReady) {
       throw new Error("Failed to store event report file in Cloudflare KV.");
     }
+  } else if (!supabaseReady && !keepExistingReport) {
+    const kvExists = await hasEventFileInKv(finalReportObjectPath);
+    const localExists = hasLocalEventFile(finalReportObjectPath);
+    if (kvExists || localExists) {
+      reportDownloadUrl = buildEventFileDownloadUrl(finalReportObjectPath);
+    } else {
+      throw new Error("Please upload the event report before submitting.");
+    }
+  } else if (
+    !supabaseReady &&
+    ((await hasEventFileInKv(finalReportObjectPath)) || hasLocalEventFile(finalReportObjectPath))
+  ) {
+    reportDownloadUrl = buildEventFileDownloadUrl(finalReportObjectPath);
   }
 
   const keepExistingPhotos =
@@ -228,6 +243,11 @@ export async function processStudentEventSubmission(
         } else if (hasCfKv && !supabaseReady) {
           throw new Error("Failed to store event photo file in Cloudflare KV.");
         }
+      } else if (
+        !supabaseReady &&
+        ((await hasEventFileInKv(pPath)) || hasLocalEventFile(pPath))
+      ) {
+        resolvedPhotoUrl = buildEventFileDownloadUrl(pPath);
       }
       photoDownloadUrls.push(resolvedPhotoUrl);
     }
@@ -280,6 +300,11 @@ export async function processStudentEventSubmission(
         } else if (hasCfKv && !supabaseReady) {
           throw new Error("Failed to store supporting event document in Cloudflare KV.");
         }
+      } else if (
+        !supabaseReady &&
+        ((await hasEventFileInKv(dPath)) || hasLocalEventFile(dPath))
+      ) {
+        resolvedDocUrl = buildEventFileDownloadUrl(dPath);
       }
       docDownloadUrls.push(resolvedDocUrl);
     }
@@ -295,17 +320,17 @@ export async function processStudentEventSubmission(
 
       const savedFile = await getEventFileFromKv(path);
       if (!savedFile) {
-        throw new Error("A previously saved event attachment is missing. Please upload it again.");
+        throw new Error("An uploaded event attachment could not be verified. Please upload it again.");
       }
       const { error: restoreError } = await supabaseAdmin.storage
         .from("student-forum-files")
         .upload(path, new Uint8Array(savedFile.bytes), {
           contentType: savedFile.contentType,
-          upsert: false,
+          upsert: true,
         });
       if (restoreError) {
         console.error("Could not restore an existing event attachment:", restoreError.message);
-        throw new Error("A previously saved event attachment could not be restored.");
+        throw new Error("An uploaded event attachment could not be finalized.");
       }
     };
 
@@ -313,7 +338,7 @@ export async function processStudentEventSubmission(
       const decoded = decodeEventFileDataUrl(dataUrl, contentType);
       const { error: uploadError } = await supabaseAdmin.storage
         .from("student-forum-files")
-        .upload(path, decoded.bytes, { contentType: decoded.contentType, upsert: false });
+        .upload(path, decoded.bytes, { contentType: decoded.contentType, upsert: true });
       if (uploadError) {
         console.error("Event attachment upload failed:", uploadError.message);
         throw new Error("An event attachment could not be saved. Please retry the submission.");
@@ -322,10 +347,8 @@ export async function processStudentEventSubmission(
 
     if (data.reportBase64) {
       await uploadNewFile(finalReportObjectPath, data.reportBase64, finalReportContentType);
-    } else if (isUpdate) {
-      await ensureExistingFile(finalReportObjectPath);
     } else {
-      throw new Error("Please upload the event report before submitting.");
+      await ensureExistingFile(finalReportObjectPath);
     }
 
     for (let index = 0; index < finalPhotoObjectPaths.length; index++) {
@@ -334,10 +357,8 @@ export async function processStudentEventSubmission(
       const photoDataUrl = data.photoBase64s?.[index];
       if (photoDataUrl) {
         await uploadNewFile(photoPath, photoDataUrl, "image/jpeg");
-      } else if (isUpdate) {
-        await ensureExistingFile(photoPath);
       } else {
-        throw new Error("An event photo could not be read. Please upload it again.");
+        await ensureExistingFile(photoPath);
       }
     }
 
@@ -347,9 +368,32 @@ export async function processStudentEventSubmission(
       const docDataUrl = incomingDocBase64s[index];
       if (docDataUrl) {
         await uploadNewFile(docPath, docDataUrl, finalDocContentTypes[index] || "application/pdf");
-      } else if (isUpdate) {
+      } else {
         await ensureExistingFile(docPath);
       }
+    }
+
+    // Store supporting Documents manifest in Supabase Storage so Vercel deployments preserve Documents reliably
+    const docsManifestPath = `submissions/${eventId}/_documents.json`;
+    if (finalDocObjectPaths.length > 0) {
+      const manifestBytes = new TextEncoder().encode(
+        JSON.stringify({
+          document_object_paths: finalDocObjectPaths,
+          document_file_names: finalDocFileNames,
+          document_content_types: finalDocContentTypes,
+        }),
+      );
+      const { error: manifestErr } = await supabaseAdmin.storage
+        .from("student-forum-files")
+        .upload(docsManifestPath, manifestBytes, {
+          contentType: "application/json",
+          upsert: true,
+        });
+      if (manifestErr) {
+        console.warn("Supabase documents manifest note:", manifestErr.message);
+      }
+    } else {
+      await supabaseAdmin.storage.from("student-forum-files").remove([docsManifestPath]);
     }
 
     const { error: upsertError } = await supabaseAdmin.from("student_forum_events").upsert({

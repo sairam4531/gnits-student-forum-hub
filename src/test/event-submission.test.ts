@@ -708,4 +708,194 @@ describe("Event Submission Flow & Security Audit", () => {
       }
     }
   });
+
+  it("uploads direct and chunked binary attachments via POST /api/event-file, enforces role bounds, and commits metadata-only submissions without HTTP 413", async () => {
+    const { handleEventFileRequest } = await import("@/lib/event-file.server");
+    const { processStudentEventSubmission } = await import("@/lib/events.server");
+    const { deleteLocalEvent, deleteEventFilesFromKv } = await import("@/lib/local-events-store");
+    const { authenticatePortalCredentials, signSession, SESSION_COOKIE_NAME } = await import(
+      "@/lib/admin-session.server"
+    );
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+
+    const kvData = new Map<string, unknown>();
+    const holder = globalThis as unknown as {
+      __env__?: Record<string, unknown>;
+      __gnitsEventsStore?: unknown;
+    };
+    const prevEnv = holder.__env__;
+    const prevEventsStore = holder.__gnitsEventsStore;
+    const prevSubId = "12345678-90ab-4def-8123-456789abcdef";
+
+    holder.__env__ = {
+      ADMIN_SESSION_SECRET: "test-secret-0123456789abcdef0123456789",
+      KV: {
+        get: async (key: string, type?: string) => {
+          const val = kvData.get(key);
+          if (val === undefined) return null;
+          if (type === "json") return JSON.parse(String(val));
+          return val;
+        },
+        put: async (key: string, val: unknown) => {
+          kvData.set(key, typeof val === "string" ? val : val);
+        },
+        delete: async (key: string) => {
+          kvData.delete(key);
+        },
+      },
+    };
+    holder.__gnitsEventsStore = undefined;
+
+    try {
+      const techAcc = authenticatePortalCredentials("gnitstechnical", "gnitstechnical@1234", "admin");
+      const techToken = await signSession(techAcc);
+      const cookie = `${SESSION_COOKIE_NAME}=${encodeURIComponent(techToken)}`;
+
+      const reportPath = `submissions/${prevSubId}/big-report.pdf`;
+      const docPath = `submissions/${prevSubId}/doc_0_guide.docx`;
+
+      // 1. Unauthenticated POST /api/event-file blocked (401)
+      const unauthUpload = await handleEventFileRequest(
+        new Request(
+          `http://localhost/api/event-file?action=upload&path=${encodeURIComponent(reportPath)}&clubSlug=technical-events&kind=report&name=big-report.pdf`,
+          { method: "POST", body: new Blob([new Uint8Array([1, 2, 3])]) },
+        ),
+      );
+      expect(unauthUpload.status).toBe(401);
+
+      // 2. Category Admin blocked from uploading to another category (403)
+      const wrongClubUpload = await handleEventFileRequest(
+        new Request(
+          `http://localhost/api/event-file?action=upload&path=${encodeURIComponent(reportPath)}&clubSlug=cultural-events&kind=report&name=big-report.pdf`,
+          {
+            method: "POST",
+            headers: { Cookie: cookie },
+            body: new Blob([new Uint8Array([1, 2, 3])]),
+          },
+        ),
+      );
+      expect(wrongClubUpload.status).toBe(403);
+
+      // 3. Direct upload over 4 MB returns 413
+      const oversizedDirect = await handleEventFileRequest(
+        new Request(
+          `http://localhost/api/event-file?action=upload&path=${encodeURIComponent(reportPath)}&clubSlug=technical-events&kind=report&name=big-report.pdf`,
+          {
+            method: "POST",
+            headers: { Cookie: cookie },
+            body: new Blob([new Uint8Array(4 * 1024 * 1024 + 16)]),
+          },
+        ),
+      );
+      expect(oversizedDirect.status).toBe(413);
+
+      // 4. Direct binary upload for DOCX document succeeds in KV
+      const docBytes = new TextEncoder().encode("PK\u0003\u0004word-doc-content");
+      const docUpload = await handleEventFileRequest(
+        new Request(
+          `http://localhost/api/event-file?action=upload&path=${encodeURIComponent(docPath)}&clubSlug=technical-events&kind=document&name=guide.docx`,
+          {
+            method: "POST",
+            headers: { Cookie: cookie },
+            body: new Blob([docBytes]),
+          },
+        ),
+      );
+      expect(docUpload.status).toBe(200);
+
+      // 5. Large chunked upload flow: prepare-large -> chunk 0 & chunk 1 -> complete
+      const part0 = new Uint8Array([37, 80, 68, 70, 45, 49, 46, 52]); // "%PDF-1.4"
+      const part1 = new Uint8Array([10, 112, 97, 114, 116, 50]); // "\npart2"
+      const totalSize = part0.byteLength + part1.byteLength;
+
+      const prepRes = await handleEventFileRequest(
+        new Request(
+          `http://localhost/api/event-file?action=prepare-large&path=${encodeURIComponent(reportPath)}&clubSlug=technical-events&kind=report&name=big-report.pdf&type=application%2Fpdf&size=${totalSize}`,
+          { method: "POST", headers: { Cookie: cookie } },
+        ),
+      );
+      expect(prepRes.status).toBe(200);
+      const prepJson = (await prepRes.json()) as { mode?: string };
+      expect(prepJson.mode).toBe("chunked");
+
+      const c0 = await handleEventFileRequest(
+        new Request(
+          `http://localhost/api/event-file?action=chunk&path=${encodeURIComponent(reportPath)}&clubSlug=technical-events&kind=report&name=big-report.pdf&index=0&total=2`,
+          { method: "POST", headers: { Cookie: cookie }, body: new Blob([part0]) },
+        ),
+      );
+      const c1 = await handleEventFileRequest(
+        new Request(
+          `http://localhost/api/event-file?action=chunk&path=${encodeURIComponent(reportPath)}&clubSlug=technical-events&kind=report&name=big-report.pdf&index=1&total=2`,
+          { method: "POST", headers: { Cookie: cookie }, body: new Blob([part1]) },
+        ),
+      );
+      expect(c0.status).toBe(200);
+      expect(c1.status).toBe(200);
+
+      const completeRes = await handleEventFileRequest(
+        new Request(
+          `http://localhost/api/event-file?action=complete&path=${encodeURIComponent(reportPath)}&clubSlug=technical-events&kind=report&name=big-report.pdf&type=application%2Fpdf&total=2&size=${totalSize}`,
+          { method: "POST", headers: { Cookie: cookie } },
+        ),
+      );
+      expect(completeRes.status).toBe(200);
+
+      // 6. Metadata-only submission (NO reportBase64 / documentBase64s) commits cleanly
+      const commitRes = await processStudentEventSubmission(
+        {
+          id: prevSubId,
+          clubSlug: "technical-events",
+          forumSlug: "iste",
+          eventName: "Large PDF Chunked Event",
+          eventStart: "2026-11-27",
+          eventEnd: "2026-11-27",
+          resourcePersons: "Dr. S. Nair",
+          submitterName: "sairam",
+          submitterEmail: "sairam@gmail.com",
+          reportObjectPath: reportPath,
+          reportFileName: "big-report.pdf",
+          reportContentType: "application/pdf",
+          photoObjectPaths: [],
+          photoFileNames: [],
+          documentObjectPaths: [docPath],
+          documentFileNames: ["guide.docx"],
+          documentContentTypes: [
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          ],
+        },
+        techToken,
+      );
+      expect(commitRes.success).toBe(true);
+
+      // 7. Streaming GET /api/event-file reassembles chunks accurately
+      const getChunkedRes = await handleEventFileRequest(
+        new Request(`http://localhost/api/event-file?path=${encodeURIComponent(reportPath)}`, {
+          headers: { Cookie: cookie },
+        }),
+      );
+      expect(getChunkedRes.status).toBe(200);
+      const streamed = new Uint8Array(await getChunkedRes.arrayBuffer());
+      expect(Array.from(streamed)).toEqual([...part0, ...part1]);
+
+      // 8. Deleting files from KV removes chunk keys too
+      await deleteEventFilesFromKv([reportPath, docPath]);
+      expect(kvData.has(`event_file_chunk:${reportPath}:0`)).toBe(false);
+      expect(kvData.has(`event_file_chunk:${reportPath}:1`)).toBe(false);
+      expect(kvData.has(`event_file_meta:${reportPath}`)).toBe(false);
+    } finally {
+      deleteLocalEvent(prevSubId);
+      holder.__gnitsEventsStore = prevEventsStore;
+      const subDir = path.resolve(process.cwd(), "public", "submissions", prevSubId);
+      if (fs.existsSync(subDir)) {
+        fs.rmSync(subDir, { recursive: true, force: true });
+      }
+      if (prevEnv === undefined) {
+        delete holder.__env__;
+      } else {
+        holder.__env__ = prevEnv;
+      }
+    }
+  });
 });

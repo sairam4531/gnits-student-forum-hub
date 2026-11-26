@@ -229,6 +229,102 @@ export const updateAdminProfileServerFn = createServerFn({ method: "POST" })
     return memoryAdminProfile;
   });
 
+type SupabaseAdminClient = Awaited<
+  typeof import("@/integrations/supabase/client.server")
+>["supabaseAdmin"];
+
+async function loadSupabaseDocumentsManifest(
+  supabaseAdmin: SupabaseAdminClient,
+  eventId: string,
+): Promise<{
+  document_object_paths: string[];
+  document_file_names: string[];
+  document_content_types: string[];
+} | null> {
+  try {
+    const { data, error } = await supabaseAdmin.storage
+      .from("student-forum-files")
+      .download(`submissions/${eventId}/_documents.json`);
+    if (error || !data) return null;
+    const text = await data.text();
+    const parsed = JSON.parse(text) as {
+      document_object_paths?: unknown;
+      document_file_names?: unknown;
+      document_content_types?: unknown;
+    };
+    if (!Array.isArray(parsed.document_object_paths) || !Array.isArray(parsed.document_file_names)) {
+      return null;
+    }
+    return {
+      document_object_paths: parsed.document_object_paths.filter(
+        (v): v is string => typeof v === "string",
+      ),
+      document_file_names: parsed.document_file_names.filter(
+        (v): v is string => typeof v === "string",
+      ),
+      document_content_types: Array.isArray(parsed.document_content_types)
+        ? parsed.document_content_types.filter((v): v is string => typeof v === "string")
+        : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function hydrateSupabaseRecordUrls(
+  supabaseAdmin: SupabaseAdminClient,
+  ev: AdminEventRecord,
+  kvRec?: AdminEventRecord,
+): Promise<AdminEventRecord> {
+  if (ev.report_object_path) {
+    const { data: reportUrl } = await supabaseAdmin.storage
+      .from("student-forum-files")
+      .createSignedUrl(ev.report_object_path, 3600);
+    ev.report_download_url =
+      reportUrl?.signedUrl || buildEventFileDownloadUrl(ev.report_object_path);
+  }
+
+  if (ev.photo_object_paths && ev.photo_object_paths.length > 0) {
+    const photoUrls: string[] = [];
+    for (const p of ev.photo_object_paths) {
+      const { data: pUrl } = await supabaseAdmin.storage
+        .from("student-forum-files")
+        .createSignedUrl(p, 3600);
+      photoUrls.push(pUrl?.signedUrl || buildEventFileDownloadUrl(p));
+    }
+    ev.photo_download_urls = photoUrls;
+  }
+
+  if (kvRec?.document_object_paths?.length && !ev.document_object_paths?.length) {
+    ev.document_object_paths = kvRec.document_object_paths;
+    ev.document_file_names = kvRec.document_file_names;
+    ev.document_content_types = kvRec.document_content_types;
+    ev.document_download_urls = kvRec.document_download_urls;
+  }
+
+  if (!ev.document_object_paths?.length) {
+    const manifest = await loadSupabaseDocumentsManifest(supabaseAdmin, ev.id);
+    if (manifest && manifest.document_object_paths.length > 0) {
+      ev.document_object_paths = manifest.document_object_paths;
+      ev.document_file_names = manifest.document_file_names;
+      ev.document_content_types = manifest.document_content_types;
+    }
+  }
+
+  if (ev.document_object_paths?.length && !ev.document_download_urls?.length) {
+    const docUrls: string[] = [];
+    for (const d of ev.document_object_paths) {
+      const { data: dUrl } = await supabaseAdmin.storage
+        .from("student-forum-files")
+        .createSignedUrl(d, 3600);
+      docUrls.push(dUrl?.signedUrl || buildEventFileDownloadUrl(d));
+    }
+    ev.document_download_urls = docUrls;
+  }
+
+  return ev;
+}
+
 // 6. Get Admin Events (with private submitter details & signed download URLs)
 export const getAdminForumEventsServerFn = createServerFn({ method: "GET" })
   .validator((input) =>
@@ -250,6 +346,8 @@ export const getAdminForumEventsServerFn = createServerFn({ method: "GET" })
 
     const records: AdminEventRecord[] = [];
     const seenIds = new Set<string>();
+    const allLocal = await getEventsStoreAsync({ strictKv: true });
+    const localById = new Map(allLocal.map((item) => [item.id, item]));
 
     // 1. Primary: Fetch authoritative records from Supabase
     try {
@@ -267,23 +365,7 @@ export const getAdminForumEventsServerFn = createServerFn({ method: "GET" })
         if (!error && events) {
           for (const ev of events as AdminEventRecord[]) {
             seenIds.add(ev.id);
-            if (ev.report_object_path) {
-              const { data: reportUrl } = await supabaseAdmin.storage
-                .from("student-forum-files")
-                .createSignedUrl(ev.report_object_path, 3600);
-              ev.report_download_url = reportUrl?.signedUrl || `/${ev.report_object_path}`;
-            }
-            if (ev.photo_object_paths && ev.photo_object_paths.length > 0) {
-              const photoUrls: string[] = [];
-              for (const p of ev.photo_object_paths) {
-                const { data: pUrl } = await supabaseAdmin.storage
-                  .from("student-forum-files")
-                  .createSignedUrl(p, 3600);
-                if (pUrl?.signedUrl) photoUrls.push(pUrl.signedUrl);
-              }
-              ev.photo_download_urls =
-                photoUrls.length > 0 ? photoUrls : ev.photo_object_paths.map((p) => `/${p}`);
-            }
+            await hydrateSupabaseRecordUrls(supabaseAdmin, ev, localById.get(ev.id));
             records.push(ev);
           }
         }
@@ -293,19 +375,6 @@ export const getAdminForumEventsServerFn = createServerFn({ method: "GET" })
     }
 
     // 2. Secondary fallback / bundled events (e.g. if Supabase is cold or KV-backed)
-    const allLocal = await getEventsStoreAsync({ strictKv: true });
-    const localById = new Map(allLocal.map((item) => [item.id, item]));
-
-    // Attach document metadata stored in KV onto matching Supabase rows when present
-    for (const rec of records) {
-      const kvRec = localById.get(rec.id);
-      if (kvRec?.document_object_paths?.length && !rec.document_object_paths?.length) {
-        rec.document_object_paths = kvRec.document_object_paths;
-        rec.document_file_names = kvRec.document_file_names;
-        rec.document_content_types = kvRec.document_content_types;
-        rec.document_download_urls = kvRec.document_download_urls;
-      }
-    }
 
     for (const ev of allLocal) {
       if (ev.club_slug === data.clubSlug && ev.forum_slug === data.forumSlug && !seenIds.has(ev.id)) {
@@ -383,6 +452,8 @@ export const getAllAdminEventsServerFn = createServerFn({ method: "GET" }).handl
 
   const allRecords: AdminEventRecord[] = [];
   const seenIds = new Set<string>();
+  const allLocal = await getEventsStoreAsync({ strictKv: true });
+  const localById = new Map(allLocal.map((item) => [item.id, item]));
 
   // 1. Primary: Load all authoritative records from Supabase
   try {
@@ -398,6 +469,19 @@ export const getAllAdminEventsServerFn = createServerFn({ method: "GET" }).handl
       if (!error && events) {
         for (const ev of events as AdminEventRecord[]) {
           seenIds.add(ev.id);
+          const kvRec = localById.get(ev.id);
+          if (kvRec?.document_object_paths?.length && !ev.document_object_paths?.length) {
+            ev.document_object_paths = kvRec.document_object_paths;
+            ev.document_file_names = kvRec.document_file_names;
+            ev.document_content_types = kvRec.document_content_types;
+          } else if (!ev.document_object_paths?.length) {
+            const manifest = await loadSupabaseDocumentsManifest(supabaseAdmin, ev.id);
+            if (manifest && manifest.document_object_paths.length > 0) {
+              ev.document_object_paths = manifest.document_object_paths;
+              ev.document_file_names = manifest.document_file_names;
+              ev.document_content_types = manifest.document_content_types;
+            }
+          }
           allRecords.push(ev);
         }
       }
@@ -407,7 +491,6 @@ export const getAllAdminEventsServerFn = createServerFn({ method: "GET" }).handl
   }
 
   // 2. Secondary fallback / bundled events
-  const allLocal = await getEventsStoreAsync({ strictKv: true });
   for (const ev of allLocal) {
     if (!seenIds.has(ev.id)) {
       seenIds.add(ev.id);
@@ -448,6 +531,28 @@ export const deleteAdminEventServerFn = createServerFn({ method: "POST" })
         "@/integrations/supabase/client.server"
       );
       if (hasSupabaseAdminConfig()) {
+        const { data: remoteRow } = await supabaseAdmin
+          .from("student_forum_events")
+          .select("report_object_path, photo_object_paths")
+          .eq("id", data.id)
+          .maybeSingle();
+
+        const manifest = await loadSupabaseDocumentsManifest(supabaseAdmin, data.id);
+        const remotePaths = [
+          targetEvent?.report_object_path,
+          ...(targetEvent?.photo_object_paths || []),
+          ...(targetEvent?.document_object_paths || []),
+          remoteRow?.report_object_path,
+          ...(remoteRow?.photo_object_paths || []),
+          ...(manifest?.document_object_paths || []),
+          `submissions/${data.id}/_documents.json`,
+        ].filter((p): p is string => Boolean(p));
+
+        if (remotePaths.length > 0) {
+          await supabaseAdmin.storage
+            .from("student-forum-files")
+            .remove(Array.from(new Set(remotePaths)));
+        }
         await supabaseAdmin.from("student_forum_events").delete().eq("id", data.id);
       }
     } catch (err) {

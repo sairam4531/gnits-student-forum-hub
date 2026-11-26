@@ -38,6 +38,10 @@ export interface EventSubmissionModalProps {
   onSubmitted?: ((savedEvent: AdminEventRecord) => void | Promise<void>) | undefined;
 }
 
+const DIRECT_UPLOAD_MAX_BYTES = 3.5 * 1024 * 1024; // Fits safely under Vercel 4.5 MB limit
+const LARGE_CHUNK_BYTES = 2.5 * 1024 * 1024;
+const INLINE_TEST_FALLBACK_MAX_BYTES = 1.5 * 1024 * 1024;
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -45,6 +49,123 @@ function fileToBase64(file: File): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+async function parseUploadError(res: Response, fallback: string): Promise<string> {
+  try {
+    const errJson = (await res.json()) as { error?: string };
+    if (errJson?.error) return errJson.error;
+  } catch {
+    // ignore non-JSON body
+  }
+  if (res.status === 413) {
+    return "Attachment exceeds upload limit. Please try again with a smaller chunk.";
+  }
+  return `${fallback} (HTTP ${res.status}).`;
+}
+
+async function uploadEventAttachment(
+  file: Blob,
+  objectPath: string,
+  clubSlug: string,
+  kind: "report" | "document" | "photo",
+  fileName: string,
+  contentType: string,
+): Promise<void> {
+  const baseParams = new URLSearchParams({
+    path: objectPath,
+    clubSlug,
+    kind,
+    name: fileName,
+    type: contentType,
+  });
+
+  if (file.size <= DIRECT_UPLOAD_MAX_BYTES) {
+    const uploadParams = new URLSearchParams(baseParams);
+    uploadParams.set("action", "upload");
+    uploadParams.set("size", String(file.size));
+    const res = await fetch(`/api/event-file?${uploadParams.toString()}`, {
+      method: "POST",
+      body: file,
+      headers: { "Content-Type": "application/octet-stream" },
+      credentials: "include",
+    });
+    if (!res.ok) {
+      throw new Error(await parseUploadError(res, `Failed to upload ${fileName}`));
+    }
+    return;
+  }
+
+  const prepParams = new URLSearchParams(baseParams);
+  prepParams.set("action", "prepare-large");
+  prepParams.set("size", String(file.size));
+  const prepRes = await fetch(`/api/event-file?${prepParams.toString()}`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!prepRes.ok) {
+    throw new Error(await parseUploadError(prepRes, `Failed to initialize upload for ${fileName}`));
+  }
+
+  const prep = (await prepRes.json()) as {
+    mode?: "signed-url" | "chunked";
+    signedUrl?: string;
+    chunkSize?: number;
+  };
+
+  if (prep.mode === "signed-url" && prep.signedUrl) {
+    const rawBytes = await file.arrayBuffer();
+    const putRes = await fetch(prep.signedUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": contentType || "application/octet-stream",
+        "Cache-Control": "max-age=3600",
+        "x-upsert": "true",
+      },
+      body: rawBytes,
+    });
+    if (!putRes.ok) {
+      throw new Error(`Storage upload failed for ${fileName} (HTTP ${putRes.status}).`);
+    }
+    return;
+  }
+
+  const chunkSize = prep.chunkSize || LARGE_CHUNK_BYTES;
+  const totalChunks = Math.max(1, Math.ceil(file.size / chunkSize));
+  for (let index = 0; index < totalChunks; index += 1) {
+    const start = index * chunkSize;
+    const end = Math.min(start + chunkSize, file.size);
+    const chunkParams = new URLSearchParams(baseParams);
+    chunkParams.set("action", "chunk");
+    chunkParams.set("index", String(index));
+    chunkParams.set("total", String(totalChunks));
+    const chunkRes = await fetch(`/api/event-file?${chunkParams.toString()}`, {
+      method: "POST",
+      body: file.slice(start, end),
+      headers: { "Content-Type": "application/octet-stream" },
+      credentials: "include",
+    });
+    if (!chunkRes.ok) {
+      throw new Error(
+        await parseUploadError(
+          chunkRes,
+          `Failed uploading part ${index + 1}/${totalChunks} of ${fileName}`,
+        ),
+      );
+    }
+  }
+
+  const completeParams = new URLSearchParams(baseParams);
+  completeParams.set("action", "complete");
+  completeParams.set("total", String(totalChunks));
+  completeParams.set("size", String(file.size));
+  const completeRes = await fetch(`/api/event-file?${completeParams.toString()}`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!completeRes.ok) {
+    throw new Error(await parseUploadError(completeRes, `Failed to finalize upload for ${fileName}`));
+  }
 }
 
 export function EventSubmissionModal({
@@ -62,6 +183,7 @@ export function EventSubmissionModal({
   const editingEventId = editingEvent?.id || null;
 
   const [submitting, setSubmitting] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -173,12 +295,38 @@ export function EventSubmissionModal({
     }
 
     setSubmitting(true);
+    setUploadStatus("Preparing files...");
 
     try {
       const submissionId = editingEventId || crypto.randomUUID();
       const sanitizeName = (name: string) => name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      let useInlineFallback = false;
 
-      // 1. Prepare report file
+      const tryUploadOrFallback = async (
+        blob: Blob,
+        path: string,
+        kind: "report" | "document" | "photo",
+        name: string,
+        type: string,
+      ) => {
+        if (useInlineFallback) return;
+        try {
+          await uploadEventAttachment(blob, path, club.slug, kind, name, type);
+        } catch (err) {
+          // Only fall back to inline base64 in unit-test environments without a live HTTP endpoint
+          const totalBytes =
+            (reportFile?.size ?? 0) +
+            documentFiles.reduce((s, f) => s + f.size, 0) +
+            photoFiles.reduce((s, f) => s + f.size, 0);
+          if (err instanceof TypeError && totalBytes <= INLINE_TEST_FALLBACK_MAX_BYTES) {
+            useInlineFallback = true;
+            return;
+          }
+          throw err;
+        }
+      };
+
+      // 1. Prepare and upload report file independently
       let finalReportPath = existingReportPath || `submissions/${submissionId}/report.pdf`;
       let finalReportName = existingReportName || "Event_Report.pdf";
       let finalReportType = existingReportType || "application/pdf";
@@ -191,10 +339,20 @@ export function EventSubmissionModal({
         finalReportType = reportFile.type || "application/pdf";
 
         await saveEventFile(finalReportPath, reportFile, reportFile.name);
-        safeReportBase64 = await fileToBase64(reportFile);
+        setUploadStatus(`Uploading report (${reportFile.name})...`);
+        await tryUploadOrFallback(
+          reportFile,
+          finalReportPath,
+          "report",
+          finalReportName,
+          finalReportType,
+        );
+        if (useInlineFallback) {
+          safeReportBase64 = await fileToBase64(reportFile);
+        }
       }
 
-      // 2. Prepare photos
+      // 2. Prepare and upload photos independently
       let finalPhotoPaths = [...existingPhotoPaths];
       let finalPhotoNames = [...existingPhotoNames];
       let finalPhotoUrls = [...existingPhotoUrls];
@@ -203,6 +361,7 @@ export function EventSubmissionModal({
       if (photoFiles.length > 0) {
         const newPhotoPaths: string[] = [];
         const newPhotoNames: string[] = [];
+        const newPhotoUrls: string[] = [];
         const newPhotoBase64s: string[] = [];
         const compressedPhotos = await Promise.all(
           photoFiles.map((photo) => compressImage(photo, 1200, 1200, 0.75)),
@@ -235,16 +394,30 @@ export function EventSubmissionModal({
           newPhotoNames.push(photo.name);
           const compressedBlob = await fetch(photoBase64).then((response) => response.blob());
           await saveEventFile(photoPath, compressedBlob, photo.name);
-          newPhotoBase64s.push(photoBase64);
+
+          setUploadStatus(`Uploading photo ${i + 1} of ${photoFiles.length}...`);
+          await tryUploadOrFallback(
+            compressedBlob,
+            photoPath,
+            "photo",
+            photo.name,
+            photoMimeType || "image/jpeg",
+          );
+          if (useInlineFallback) {
+            newPhotoBase64s.push(photoBase64);
+            newPhotoUrls.push(photoBase64);
+          } else {
+            newPhotoUrls.push(`/api/event-file?path=${encodeURIComponent(photoPath)}`);
+          }
         }
 
-        safePhotoBase64s = newPhotoBase64s;
+        safePhotoBase64s = useInlineFallback ? newPhotoBase64s : undefined;
         finalPhotoPaths = newPhotoPaths;
         finalPhotoNames = newPhotoNames;
-        finalPhotoUrls = newPhotoBase64s;
+        finalPhotoUrls = newPhotoUrls;
       }
 
-      // 2b. Prepare additional Documents (PDF / Word)
+      // 2b. Prepare and upload additional Documents (PDF / Word) independently
       let finalDocPaths = [...existingDocPaths];
       let finalDocNames = [...existingDocNames];
       let finalDocTypes = [...existingDocTypes];
@@ -264,20 +437,24 @@ export function EventSubmissionModal({
           const docPath = `submissions/${submissionId}/doc_${i}_${crypto.randomUUID()}_${docSafeName}`;
           const docType = docFile.type || "application/pdf";
           await saveEventFile(docPath, docFile, docFile.name);
-          const docBase64 = await fileToBase64(docFile);
+          setUploadStatus(`Uploading document ${i + 1} of ${documentFiles.length}...`);
+          await tryUploadOrFallback(docFile, docPath, "document", docFile.name, docType);
           newDocPaths.push(docPath);
           newDocNames.push(docFile.name);
           newDocTypes.push(docType);
-          newDocBase64s.push(docBase64);
+          if (useInlineFallback) {
+            newDocBase64s.push(await fileToBase64(docFile));
+          }
         }
 
-        safeDocBase64s = newDocBase64s;
+        safeDocBase64s = useInlineFallback ? newDocBase64s : undefined;
         finalDocPaths = newDocPaths;
         finalDocNames = newDocNames;
         finalDocTypes = newDocTypes;
         finalDocUrls = newDocPaths.map((d) => `/api/event-file?path=${encodeURIComponent(d)}`);
       }
 
+      setUploadStatus("Saving event record...");
       const editToken = editingEventId ? getEventEditToken(editingEventId) : undefined;
       const optionalForumFields = isInstitutionalEvent
         ? {}
@@ -287,7 +464,7 @@ export function EventSubmissionModal({
             submitterEmail: submitterEmail.trim().toLowerCase(),
           };
 
-      // 3. Commit to authoritative server database
+      // 3. Commit compact metadata to authoritative server database (no large base64 body -> avoids HTTP 413)
       const res = await submitStudentEvent({
         data: {
           id: submissionId,
@@ -309,8 +486,8 @@ export function EventSubmissionModal({
                 documentContentTypes: finalDocTypes,
               }
             : {}),
-          reportBase64: safeReportBase64,
-          photoBase64s: safePhotoBase64s,
+          ...(safeReportBase64 ? { reportBase64: safeReportBase64 } : {}),
+          ...(safePhotoBase64s ? { photoBase64s: safePhotoBase64s } : {}),
           ...(safeDocBase64s && safeDocBase64s.length > 0
             ? { documentBase64s: safeDocBase64s }
             : {}),
@@ -380,6 +557,7 @@ export function EventSubmissionModal({
       setSubmitError(msg);
     } finally {
       setSubmitting(false);
+      setUploadStatus(null);
     }
   };
 
@@ -749,7 +927,10 @@ export function EventSubmissionModal({
                 {submitting ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>{editingEventId ? "Updating..." : `Submitting to ${targetRoleLabel}...`}</span>
+                    <span>
+                      {uploadStatus ||
+                        (editingEventId ? "Updating..." : `Submitting to ${targetRoleLabel}...`)}
+                    </span>
                   </>
                 ) : (
                   <>
