@@ -221,16 +221,16 @@ export function EventsClubsDrawer({
   const isSearching = searchTerm.trim().length > 0;
   const searchResults = isSearching
     ? [
-        ...institutionalEvents
-          .filter((n) => n.toLowerCase().includes(searchTerm.toLowerCase()))
-          .map((n) => ({ name: n, club: institutionalClub, group: "Institutional Event" })),
-        ...studentForumCategories.flatMap((cat) => {
-          const club = forums.find((f) => f.slug === cat.clubSlug) || institutionalClub;
-          return cat.forums
-            .filter((forumName) => forumName.toLowerCase().includes(searchTerm.toLowerCase()))
-            .map((forumName) => ({ name: forumName, club, group: cat.title }));
-        }),
-      ]
+      ...institutionalEvents
+        .filter((n) => n.toLowerCase().includes(searchTerm.toLowerCase()))
+        .map((n) => ({ name: n, club: institutionalClub, group: "Institutional Event" })),
+      ...studentForumCategories.flatMap((cat) => {
+        const club = forums.find((f) => f.slug === cat.clubSlug) || institutionalClub;
+        return cat.forums
+          .filter((forumName) => forumName.toLowerCase().includes(searchTerm.toLowerCase()))
+          .map((forumName) => ({ name: forumName, club, group: cat.title }));
+      }),
+    ]
     : [];
 
   return (
