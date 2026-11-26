@@ -46,10 +46,14 @@ export interface AdminEventRecord {
   report_content_type: string;
   photo_object_paths: string[];
   photo_file_names: string[];
+  document_object_paths?: string[] | undefined;
+  document_file_names?: string[] | undefined;
+  document_content_types?: string[] | undefined;
   created_at: string;
   updated_at?: string | undefined;
   report_download_url?: string | undefined;
   photo_download_urls?: string[] | undefined;
+  document_download_urls?: string[] | undefined;
   edit_token_hash?: string | undefined;
 }
 
@@ -270,6 +274,19 @@ export const getAdminForumEventsServerFn = createServerFn({ method: "GET" })
 
     // 2. Secondary fallback / bundled events (e.g. if Supabase is cold or KV-backed)
     const allLocal = await getEventsStoreAsync({ strictKv: true });
+    const localById = new Map(allLocal.map((item) => [item.id, item]));
+
+    // Attach document metadata stored in KV onto matching Supabase rows when present
+    for (const rec of records) {
+      const kvRec = localById.get(rec.id);
+      if (kvRec?.document_object_paths?.length && !rec.document_object_paths?.length) {
+        rec.document_object_paths = kvRec.document_object_paths;
+        rec.document_file_names = kvRec.document_file_names;
+        rec.document_content_types = kvRec.document_content_types;
+        rec.document_download_urls = kvRec.document_download_urls;
+      }
+    }
+
     for (const ev of allLocal) {
       if (ev.club_slug === data.clubSlug && ev.forum_slug === data.forumSlug && !seenIds.has(ev.id)) {
         seenIds.add(ev.id);
@@ -297,11 +314,26 @@ export const getAdminForumEventsServerFn = createServerFn({ method: "GET" })
           resolvedPhotoUrls.push(pUrl);
         }
 
+        const resolvedDocUrls: string[] = [];
+        for (let i = 0; i < (ev.document_object_paths?.length || 0); i++) {
+          const d = ev.document_object_paths![i]!;
+          let dUrl = ev.document_download_urls?.[i] || `/${d}`;
+          if (
+            !dUrl.startsWith("/api/event-file") &&
+            !dUrl.startsWith("http") &&
+            (await hasEventFileInKv(d))
+          ) {
+            dUrl = buildEventFileDownloadUrl(d);
+          }
+          resolvedDocUrls.push(dUrl);
+        }
+
         const { edit_token_hash: _omitHash, ...safeAdminEv } = ev;
         records.push({
           ...safeAdminEv,
           report_download_url: resolvedReportUrl,
           photo_download_urls: resolvedPhotoUrls,
+          ...(resolvedDocUrls.length > 0 ? { document_download_urls: resolvedDocUrls } : {}),
         });
       }
     }
@@ -372,6 +404,7 @@ export const deleteAdminEventServerFn = createServerFn({ method: "POST" })
       await deleteEventFilesFromKv([
         targetEvent.report_object_path,
         ...(targetEvent.photo_object_paths || []),
+        ...(targetEvent.document_object_paths || []),
       ]);
     }
 

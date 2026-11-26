@@ -194,6 +194,7 @@ function DedicatedEventPage() {
         "Submitter Name": ev.submitter_name || "N/A",
         "Submitter Email": ev.submitter_email || "N/A",
         "Report File": ev.report_file_name,
+        "Documents": ev.document_file_names?.join(", ") || "None",
         "Photos Count": ev.photo_file_names?.length || 0,
         "Submitted At": new Date(ev.created_at).toLocaleString(),
       }));

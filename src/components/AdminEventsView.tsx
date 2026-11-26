@@ -316,6 +316,7 @@ export function AdminEventsView({
           "Start Date (From)": event.event_start,
           "End Date (To)": event.event_end,
           "Report File Name": event.report_file_name,
+          "Documents": event.document_file_names?.join(", ") || "None",
           "Photos Count": event.photo_file_names?.length || 0,
           "Submitted On": new Date(event.created_at).toLocaleString(),
         }
@@ -332,6 +333,7 @@ export function AdminEventsView({
           "Submitter Name": event.submitter_name || "N/A",
           "Submitter Email": event.submitter_email || "N/A",
           "Report File Name": event.report_file_name,
+          "Documents": event.document_file_names?.join(", ") || "None",
           "Photos Count": event.photo_file_names?.length || 0,
           "Submitted On": new Date(event.created_at).toLocaleString(),
         };
@@ -361,6 +363,7 @@ export function AdminEventsView({
             "Start Date": event.event_start,
             "End Date": event.event_end,
             "Report File": event.report_file_name,
+            "Documents": event.document_file_names?.join(", ") || "None",
             "Photos Uploaded": event.photo_file_names?.length || 0,
             "Submission Date": new Date(event.created_at).toLocaleString(),
           }
@@ -375,6 +378,7 @@ export function AdminEventsView({
             "Student Submitter": event.submitter_name || "N/A",
             "Submitter Email": event.submitter_email || "N/A",
             "Report File": event.report_file_name,
+            "Documents": event.document_file_names?.join(", ") || "None",
             "Photos Uploaded": event.photo_file_names?.length || 0,
             "Submission Date": new Date(event.created_at).toLocaleString(),
           },
@@ -403,6 +407,29 @@ export function AdminEventsView({
     }
     if (ev.report_download_url) {
       window.open(ev.report_download_url, "_blank");
+    }
+  };
+
+  // Handle download of additional supporting document
+  const handleDownloadDocument = async (
+    objectPath: string | undefined,
+    fileName: string,
+    downloadUrl: string | undefined,
+  ) => {
+    if (objectPath) {
+      const localUrl = await getEventFileUrl(objectPath);
+      if (localUrl) {
+        const a = document.createElement("a");
+        a.href = localUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        return;
+      }
+    }
+    if (downloadUrl) {
+      window.open(downloadUrl, "_blank");
     }
   };
 
@@ -710,6 +737,40 @@ export function AdminEventsView({
                       )}
                     </div>
                   </div>
+
+                  {/* Additional Documents List (PDF / Word) */}
+                  {(ev.document_file_names?.length || ev.document_object_paths?.length || 0) > 0 && (
+                    <div className="mt-3 pt-3 border-t border-border/70">
+                      <span className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                        Documents ({ev.document_file_names?.length || ev.document_object_paths?.length})
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {(ev.document_file_names || ev.document_object_paths || []).map((docName, dIdx) => {
+                          const docPath = ev.document_object_paths?.[dIdx];
+                          const docUrl = ev.document_download_urls?.[dIdx];
+                          return (
+                            <div
+                              key={`${ev.id}-doc-${dIdx}`}
+                              className="inline-flex items-center gap-2 rounded-xl border border-border bg-muted/40 px-3 py-1.5 text-xs"
+                            >
+                              <FileText className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                              <span className="font-semibold text-foreground max-w-[200px] truncate">
+                                {docName}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadDocument(docPath, docName, docUrl)}
+                                className="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-2 py-0.5 font-bold hover:bg-primary/20 transition-colors cursor-pointer"
+                              >
+                                <Download className="h-3 w-3" />
+                                <span>Download</span>
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

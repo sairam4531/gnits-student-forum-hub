@@ -528,6 +528,72 @@ describe("Event Submission Flow & Security Audit", () => {
         const storedEvents = JSON.parse(kvState.get("events_store") as string) as Array<{ id: string }>;
         expect(storedEvents.map((e) => e.id)).toContain("concurrent-evt-1");
         expect(storedEvents.map((e) => e.id)).toContain(subId2);
+
+        // 3. Valid PDF and Word documents pass schema and persist in KV; non-document extensions are rejected
+        const subId3 = "e1b2c3d4-e5f6-4890-abcd-ef1234567894";
+        const invalidDocParse = eventSubmissionSchema.safeParse({
+          id: subId3,
+          clubSlug: "technical-events",
+          forumSlug: "iste",
+          eventName: "Invalid Doc Extension",
+          eventStart: "2026-11-24",
+          eventEnd: "2026-11-24",
+          resourcePersons: "Dr. B",
+          submitterName: "Student",
+          submitterEmail: "student@gnits.ac.in",
+          reportObjectPath: `submissions/${subId3}/report.pdf`,
+          reportFileName: "report.pdf",
+          reportContentType: "application/pdf",
+          photoObjectPaths: [],
+          photoFileNames: [],
+          documentObjectPaths: [`submissions/${subId3}/doc.png`],
+          documentFileNames: ["doc.png"],
+          documentContentTypes: ["image/png"],
+        });
+        expect(invalidDocParse.success).toBe(false);
+
+        const docPath = `submissions/${subId3}/doc_0_Circular.docx`;
+        const docBase64 = `data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,${Buffer.from("PK\u0003\u0004doc").toString("base64")}`;
+        const withDocsRes = await processStudentEventSubmission(
+          {
+            id: subId3,
+            clubSlug: "technical-events",
+            forumSlug: "iste",
+            eventName: "ISTE Event With Docs",
+            eventStart: "2026-11-25",
+            eventEnd: "2026-11-25",
+            resourcePersons: "Dr. C",
+            submitterName: "Coord",
+            submitterEmail: "coord@gnits.ac.in",
+            reportObjectPath: `submissions/${subId3}/report.pdf`,
+            reportFileName: "report.pdf",
+            reportContentType: "application/pdf",
+            photoObjectPaths: [],
+            photoFileNames: [],
+            documentObjectPaths: [docPath],
+            documentFileNames: ["Circular.docx"],
+            documentContentTypes: [
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ],
+            reportBase64: samplePdfBase64,
+            documentBase64s: [docBase64],
+          },
+          undefined,
+        );
+        expect(withDocsRes.success).toBe(true);
+        const storedWithDocs = JSON.parse(kvState.get("events_store") as string) as Array<{
+          id: string;
+          document_file_names?: string[];
+          document_download_urls?: string[];
+        }>;
+        const savedDocRec = storedWithDocs.find((e) => e.id === subId3);
+        expect(savedDocRec?.document_file_names).toEqual(["Circular.docx"]);
+        expect(savedDocRec?.document_download_urls?.[0]).toContain("/api/event-file");
+        deleteLocalEvent(subId3);
+        const subDir3 = path.resolve(process.cwd(), "public", "submissions", subId3);
+        if (fs.existsSync(subDir3)) {
+          fs.rmSync(subDir3, { recursive: true, force: true });
+        }
       } finally {
         deleteLocalEvent(subId1);
         deleteLocalEvent(subId2);

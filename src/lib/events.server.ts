@@ -58,7 +58,11 @@ export async function processStudentEventSubmission(
 ): Promise<{ id: string; success: boolean; editToken?: string }> {
   const eventId = data.id || globalThis.crypto.randomUUID();
   const submissionFolder = `submissions/${eventId}/`;
-  const submissionPaths = [data.reportObjectPath, ...data.photoObjectPaths];
+  const submissionPaths = [
+    data.reportObjectPath,
+    ...data.photoObjectPaths,
+    ...(data.documentObjectPaths ?? []),
+  ];
   if (
     submissionPaths.some(
       (path) => !isSubmissionPath(path) || !path.startsWith(submissionFolder),
@@ -223,6 +227,58 @@ export async function processStudentEventSubmission(
     }
   }
 
+  const incomingDocPaths = data.documentObjectPaths ?? [];
+  const incomingDocNames = data.documentFileNames ?? [];
+  const incomingDocTypes = data.documentContentTypes ?? [];
+  const incomingDocBase64s = data.documentBase64s ?? [];
+
+  const keepExistingDocs =
+    isUpdate &&
+    Boolean(existingStoreEvent) &&
+    incomingDocPaths.length === 0 &&
+    incomingDocBase64s.length === 0 &&
+    (existingStoreEvent?.document_object_paths?.length ?? 0) > 0;
+
+  const finalDocObjectPaths =
+    keepExistingDocs && existingStoreEvent?.document_object_paths
+      ? existingStoreEvent.document_object_paths
+      : incomingDocPaths;
+  const finalDocFileNames =
+    keepExistingDocs && existingStoreEvent?.document_file_names
+      ? existingStoreEvent.document_file_names
+      : incomingDocNames;
+  const finalDocContentTypes =
+    keepExistingDocs && existingStoreEvent?.document_content_types
+      ? existingStoreEvent.document_content_types
+      : incomingDocTypes;
+
+  const docDownloadUrls: string[] = keepExistingDocs
+    ? existingStoreEvent?.document_download_urls ||
+      finalDocObjectPaths.map((d) => buildEventFileDownloadUrl(d))
+    : [];
+
+  if (!keepExistingDocs) {
+    for (let i = 0; i < finalDocObjectPaths.length; i++) {
+      const dPath = finalDocObjectPaths[i];
+      const dName = finalDocFileNames[i];
+      const dType = finalDocContentTypes[i];
+      const dBase64 = incomingDocBase64s[i];
+      if (!dPath) continue;
+
+      let resolvedDocUrl = existingStoreEvent?.document_download_urls?.[i] || `/${dPath}`;
+      if (dBase64) {
+        saveFileLocally(dPath, dBase64);
+        const savedKvDoc = await saveEventFileToKv(dPath, dBase64, dType, dName);
+        if (savedKvDoc) {
+          resolvedDocUrl = buildEventFileDownloadUrl(dPath);
+        } else if (hasCfKv && !supabaseReady) {
+          throw new Error("Failed to store supporting event document in Cloudflare KV.");
+        }
+      }
+      docDownloadUrls.push(resolvedDocUrl);
+    }
+  }
+
   // Commit to Supabase when genuine service-role configuration is present
   if (supabaseReady) {
     const ensureExistingFile = async (path: string) => {
@@ -276,6 +332,17 @@ export async function processStudentEventSubmission(
         await ensureExistingFile(photoPath);
       } else {
         throw new Error("An event photo could not be read. Please upload it again.");
+      }
+    }
+
+    for (let index = 0; index < finalDocObjectPaths.length; index++) {
+      const docPath = finalDocObjectPaths[index];
+      if (!docPath) continue;
+      const docDataUrl = incomingDocBase64s[index];
+      if (docDataUrl) {
+        await uploadNewFile(docPath, docDataUrl, finalDocContentTypes[index] || "application/pdf");
+      } else if (isUpdate) {
+        await ensureExistingFile(docPath);
       }
     }
 
@@ -335,6 +402,14 @@ export async function processStudentEventSubmission(
     report_content_type: finalReportContentType,
     photo_object_paths: finalPhotoObjectPaths,
     photo_file_names: finalPhotoFileNames,
+    ...(finalDocObjectPaths.length > 0
+      ? {
+          document_object_paths: finalDocObjectPaths,
+          document_file_names: finalDocFileNames,
+          document_content_types: finalDocContentTypes,
+          document_download_urls: docDownloadUrls,
+        }
+      : {}),
     created_at: existingStoreEvent?.created_at || new Date().toISOString(),
     updated_at: isUpdate ? new Date().toISOString() : undefined,
     report_download_url: reportDownloadUrl,

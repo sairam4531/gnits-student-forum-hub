@@ -30,7 +30,11 @@ import {
   DELETED_IDS_KEY,
 } from "@/lib/client-portal-store";
 import { saveEventFile, compressImage } from "@/lib/event-file-storage";
-import { MAX_UPLOAD_BYTES } from "@/lib/event-validation";
+import {
+  isSupportedReport,
+  MAX_EVENT_DOCUMENTS,
+  MAX_UPLOAD_BYTES,
+} from "@/lib/event-validation";
 
 interface ConductedEventsViewProps {
   club: ForumClub;
@@ -88,6 +92,10 @@ export function ConductedEventsView({
   const [existingPhotoPaths, setExistingPhotoPaths] = useState<string[]>([]);
   const [existingPhotoNames, setExistingPhotoNames] = useState<string[]>([]);
   const [existingPhotoUrls, setExistingPhotoUrls] = useState<string[]>([]);
+  const [existingDocPaths, setExistingDocPaths] = useState<string[]>([]);
+  const [existingDocNames, setExistingDocNames] = useState<string[]>([]);
+  const [existingDocTypes, setExistingDocTypes] = useState<string[]>([]);
+  const [existingDocUrls, setExistingDocUrls] = useState<string[]>([]);
   const [existingCreatedAt, setExistingCreatedAt] = useState<string | null>(null);
 
   // Form input states
@@ -98,6 +106,7 @@ export function ConductedEventsView({
   const [submitterName, setSubmitterName] = useState("");
   const [submitterEmail, setSubmitterEmail] = useState("");
   const [reportFile, setReportFile] = useState<File | null>(null);
+  const [documentFiles, setDocumentFiles] = useState<File[]>([]);
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
 
   // Fetch conducted events for this forum from authoritative server
@@ -205,6 +214,23 @@ export function ConductedEventsView({
     setPhotoFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleDocumentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const selected = Array.from(e.target.files);
+      const invalid = selected.find((file) => !isSupportedReport(file));
+      if (invalid) {
+        setSubmitError("Documents must be in PDF (.pdf) or Word (.doc, .docx) format.");
+        return;
+      }
+      setSubmitError(null);
+      setDocumentFiles((prev) => [...prev, ...selected].slice(0, MAX_EVENT_DOCUMENTS));
+    }
+  };
+
+  const removeDocument = (index: number) => {
+    setDocumentFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
   // Open modal for NEW event submission
   const handleOpenNewModal = () => {
     setEditingEventId(null);
@@ -215,6 +241,7 @@ export function ConductedEventsView({
     setSubmitterName("");
     setSubmitterEmail("");
     setReportFile(null);
+    setDocumentFiles([]);
     setPhotoFiles([]);
     setExistingReportPath(null);
     setExistingReportName(null);
@@ -222,6 +249,10 @@ export function ConductedEventsView({
     setExistingPhotoPaths([]);
     setExistingPhotoNames([]);
     setExistingPhotoUrls([]);
+    setExistingDocPaths([]);
+    setExistingDocNames([]);
+    setExistingDocTypes([]);
+    setExistingDocUrls([]);
     setExistingCreatedAt(null);
     setSubmitError(null);
     setSubmitSuccess(false);
@@ -246,8 +277,13 @@ export function ConductedEventsView({
     setExistingPhotoPaths(adminRecord?.photo_object_paths || []);
     setExistingPhotoNames(adminRecord?.photo_file_names || []);
     setExistingPhotoUrls(adminRecord?.photo_download_urls || []);
+    setExistingDocPaths(adminRecord?.document_object_paths || []);
+    setExistingDocNames(adminRecord?.document_file_names || []);
+    setExistingDocTypes(adminRecord?.document_content_types || []);
+    setExistingDocUrls(adminRecord?.document_download_urls || []);
     setExistingCreatedAt(ev.created_at || null);
     setReportFile(null);
+    setDocumentFiles([]);
     setPhotoFiles([]);
     setSubmitError(null);
     setSubmitSuccess(false);
@@ -287,6 +323,7 @@ export function ConductedEventsView({
     }
     if (
       (reportFile?.size ?? 0) > MAX_UPLOAD_BYTES ||
+      documentFiles.some((file) => file.size > MAX_UPLOAD_BYTES) ||
       photoFiles.some((file) => file.size > MAX_UPLOAD_BYTES)
     ) {
       setSubmitError("Each uploaded file must be 20 MB or smaller.");
@@ -366,6 +403,40 @@ export function ConductedEventsView({
         finalPhotoUrls = newPhotoBase64s;
       }
 
+      // 2b. Prepare additional Documents (PDF / Word)
+      let finalDocPaths = [...existingDocPaths];
+      let finalDocNames = [...existingDocNames];
+      let finalDocTypes = [...existingDocTypes];
+      let finalDocUrls = [...existingDocUrls];
+      let safeDocBase64s: string[] | undefined = undefined;
+
+      if (documentFiles.length > 0) {
+        const newDocPaths: string[] = [];
+        const newDocNames: string[] = [];
+        const newDocTypes: string[] = [];
+        const newDocBase64s: string[] = [];
+
+        for (let i = 0; i < documentFiles.length; i++) {
+          const docFile = documentFiles[i];
+          if (!docFile) continue;
+          const docSafeName = sanitizeName(docFile.name) || `document_${i + 1}.pdf`;
+          const docPath = `submissions/${submissionId}/doc_${i}_${crypto.randomUUID()}_${docSafeName}`;
+          const docType = docFile.type || "application/pdf";
+          await saveEventFile(docPath, docFile, docFile.name);
+          const docBase64 = await fileToBase64(docFile);
+          newDocPaths.push(docPath);
+          newDocNames.push(docFile.name);
+          newDocTypes.push(docType);
+          newDocBase64s.push(docBase64);
+        }
+
+        safeDocBase64s = newDocBase64s;
+        finalDocPaths = newDocPaths;
+        finalDocNames = newDocNames;
+        finalDocTypes = newDocTypes;
+        finalDocUrls = newDocPaths.map((d) => `/api/event-file?path=${encodeURIComponent(d)}`);
+      }
+
       const editToken = editingEventId ? getEventEditToken(editingEventId) : undefined;
       const optionalForumFields = isInstitutionalEvent
         ? {}
@@ -390,8 +461,18 @@ export function ConductedEventsView({
           reportContentType: finalReportType,
           photoObjectPaths: finalPhotoPaths,
           photoFileNames: finalPhotoNames,
+          ...(finalDocPaths.length > 0
+            ? {
+                documentObjectPaths: finalDocPaths,
+                documentFileNames: finalDocNames,
+                documentContentTypes: finalDocTypes,
+              }
+            : {}),
           reportBase64: safeReportBase64,
           photoBase64s: safePhotoBase64s,
+          ...(safeDocBase64s && safeDocBase64s.length > 0
+            ? { documentBase64s: safeDocBase64s }
+            : {}),
           ...(editToken ? { editToken } : {}),
         },
       });
@@ -420,6 +501,14 @@ export function ConductedEventsView({
           report_content_type: finalReportType,
           photo_object_paths: finalPhotoPaths,
           photo_file_names: finalPhotoNames,
+          ...(finalDocPaths.length > 0
+            ? {
+                document_object_paths: finalDocPaths,
+                document_file_names: finalDocNames,
+                document_content_types: finalDocTypes,
+                document_download_urls: finalDocUrls,
+              }
+            : {}),
           created_at: existingCreatedAt || new Date().toISOString(),
           updated_at: editingEventId ? new Date().toISOString() : undefined,
           photo_download_urls: finalPhotoUrls,
@@ -810,6 +899,72 @@ export function ConductedEventsView({
                   <p className="mt-1 text-[11px] text-muted-foreground">
                     Supported formats: PDF (.pdf), Microsoft Word (.doc, .docx) up to 20MB.
                   </p>
+                </div>
+
+                {/* Documents Upload (PDF / Word - Multiple allowed across all events) */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold uppercase tracking-wider text-foreground">
+                      Documents (PDF / Word)
+                    </label>
+                    <span className="text-[11px] text-muted-foreground font-medium">
+                      {documentFiles.length > 0
+                        ? `${documentFiles.length} new document${documentFiles.length === 1 ? "" : "s"} selected`
+                        : editingEventId && existingDocPaths.length > 0
+                        ? `${existingDocPaths.length} existing documents kept`
+                        : "0 selected"}
+                    </span>
+                  </div>
+
+                  {editingEventId && existingDocPaths.length > 0 && documentFiles.length === 0 && (
+                    <div className="mb-2 p-2.5 rounded-xl bg-orange-50 border border-orange-200 text-xs flex items-center justify-between">
+                      <span className="font-semibold text-orange-950 truncate max-w-[340px]">
+                        {existingDocPaths.length} documents currently attached ({existingDocNames.slice(0, 2).join(", ")})
+                      </span>
+                      <span className="text-[11px] text-orange-700 bg-white px-2 py-0.5 rounded-md border border-orange-200 font-bold">
+                        Kept as-is
+                      </span>
+                    </div>
+                  )}
+
+                  <label className="flex flex-col items-center justify-center border-2 border-dashed border-border rounded-xl p-4 cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors text-center">
+                    <FileText className="h-5 w-5 text-primary mb-1" />
+                    <span className="text-xs sm:text-sm font-semibold text-foreground">
+                      {editingEventId
+                        ? "Upload replacement/additional Documents (.pdf, .doc, .docx)"
+                        : "Choose Documents (.pdf, .doc, .docx — multiple allowed)"}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground mt-0.5">
+                      Circulars, attendance sheets, brochures, permission letters, or supporting docs up to 20MB each
+                    </span>
+                    <input
+                      type="file"
+                      multiple
+                      accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      onChange={handleDocumentChange}
+                      className="hidden"
+                    />
+                  </label>
+
+                  {documentFiles.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2 max-h-32 overflow-y-auto p-1">
+                      {documentFiles.map((file, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center gap-1.5 rounded-lg bg-muted px-2.5 py-1 text-xs font-medium text-foreground border border-border"
+                        >
+                          <span className="max-w-[160px] truncate">{file.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => removeDocument(idx)}
+                            className="text-muted-foreground hover:text-destructive cursor-pointer"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Event Photos Upload */}

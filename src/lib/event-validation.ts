@@ -83,8 +83,12 @@ export const eventSubmissionSchema = z
     reportContentType: z.string().max(150),
     photoObjectPaths: z.array(z.string().min(1).max(500)).max(20),
     photoFileNames: z.array(z.string().trim().min(1).max(180)).max(20),
+    documentObjectPaths: z.array(z.string().min(1).max(500)).max(20).optional(),
+    documentFileNames: z.array(z.string().trim().min(1).max(180)).max(20).optional(),
+    documentContentTypes: z.array(z.string().max(150)).max(20).optional(),
     reportBase64: z.string().optional(),
     photoBase64s: z.array(z.string()).optional(),
+    documentBase64s: z.array(z.string()).optional(),
     editToken: z.string().min(16).max(128).optional(),
   })
   .superRefine((event, context) => {
@@ -96,7 +100,27 @@ export const eventSubmissionSchema = z
         message: "Each photo must have a matching file name.",
       });
     }
-    const paths = [event.reportObjectPath, ...event.photoObjectPaths];
+    const docPaths = event.documentObjectPaths ?? [];
+    const docNames = event.documentFileNames ?? [];
+    const docTypes = event.documentContentTypes ?? [];
+    if (docPaths.length !== docNames.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["documentFileNames"],
+        message: "Each document must have a matching file name.",
+      });
+    }
+    for (let i = 0; i < docNames.length; i += 1) {
+      if (!isSupportedReport({ name: docNames[i]!, type: docTypes[i] || "" })) {
+        context.addIssue({
+          code: "custom",
+          path: ["documentFileNames"],
+          message: "All documents must be PDF or Word (.pdf, .doc, .docx) files.",
+        });
+        break;
+      }
+    }
+    const paths = [event.reportObjectPath, ...event.photoObjectPaths, ...docPaths];
     const submissionFolders = new Set(paths.map((path) => path.split("/").slice(0, 2).join("/")));
     if (
       paths.some((path) => !isSubmissionPath(path)) ||
@@ -148,3 +172,4 @@ export function isSupportedPhoto(file: Pick<File, "type">) {
 
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 export const MAX_EVENT_PHOTOS = 20;
+export const MAX_EVENT_DOCUMENTS = 20;

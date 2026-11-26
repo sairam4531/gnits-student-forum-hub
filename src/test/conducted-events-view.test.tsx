@@ -388,4 +388,128 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
     fireEvent.click(screen.getByRole("button", { name: /done/i }));
     expect(await screen.findByText("ISTE AI Workshop")).toBeTruthy();
   });
+
+  it("supports uploading PDF and Word Documents across all events (institutional and student forums) and displays them in AdminEventsView", async () => {
+    if (typeof URL.createObjectURL !== "function") {
+      Object.defineProperty(URL, "createObjectURL", {
+        configurable: true,
+        writable: true,
+        value: vi.fn(() => "blob:mock-doc-url"),
+      });
+    }
+
+    const techClub = forums[0]!;
+    const reportPdf = new File(["%PDF-1.4\nreport"], "main-report.pdf", { type: "application/pdf" });
+    const circularPdf = new File(["%PDF-1.4\ncircular"], "Circular.pdf", {
+      type: "application/pdf",
+    });
+    const attendanceDocx = new File(
+      ["PK\u0003\u0004attendance"],
+      "Attendance.docx",
+      { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
+    );
+
+    mockGetPublicForumEvents.mockResolvedValue([]);
+    mockSubmitStudentEvent.mockResolvedValue({
+      id: "iste-with-docs-1",
+      success: true,
+      editToken: "tok-docs-1",
+    });
+
+    const { container } = render(
+      <ConductedEventsView
+        club={techClub}
+        forumName="ISTE"
+        forumSlug="iste"
+        isAdmin={false}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /add new event on iste/i }));
+    expect(screen.getByText(/documents \(pdf \/ word\)/i)).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText(/national level hackathon/i), {
+      target: { value: "ISTE Cloud Seminar" },
+    });
+    const dateInputs = container.querySelectorAll('input[type="date"]');
+    fireEvent.change(dateInputs[0]!, { target: { value: "2026-10-05" } });
+    fireEvent.change(dateInputs[1]!, { target: { value: "2026-10-06" } });
+    fireEvent.change(screen.getByPlaceholderText(/dr\. k\. radhika/i), {
+      target: { value: "Dr. M. Rao" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/ananya reddy/i), {
+      target: { value: "Sneha" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/gnits\.ac\.in/i), {
+      target: { value: "sneha@gnits.ac.in" },
+    });
+
+    const reportInput = container.querySelector('input[type="file"]:not([multiple])[accept*=".pdf"]')!;
+    fireEvent.change(reportInput, { target: { files: [reportPdf] } });
+
+    const docsInput = container.querySelector('input[type="file"][multiple][accept*=".pdf"]')!;
+    fireEvent.change(docsInput, { target: { files: [circularPdf, attendanceDocx] } });
+
+    expect(screen.getByText("Circular.pdf")).toBeTruthy();
+    expect(screen.getByText("Attendance.docx")).toBeTruthy();
+
+    fireEvent.submit(screen.getByRole("button", { name: /submit to admin/i }).closest("form")!);
+
+    expect(await screen.findByText(/event submitted to admin successfully!/i)).toBeTruthy();
+    expect(mockSubmitStudentEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          documentFileNames: ["Circular.pdf", "Attendance.docx"],
+          documentObjectPaths: expect.arrayContaining([
+            expect.stringContaining("Circular.pdf"),
+            expect.stringContaining("Attendance.docx"),
+          ]),
+          documentBase64s: expect.arrayContaining([expect.stringMatching(/^data:/)]),
+        }),
+      }),
+    );
+
+    cleanup();
+
+    mockGetAdminForumEventsServerFn.mockResolvedValue([
+      {
+        id: "iste-with-docs-1",
+        club_slug: "technical-events",
+        forum_slug: "iste",
+        event_name: "ISTE Cloud Seminar",
+        event_start: "2026-10-05",
+        event_end: "2026-10-06",
+        resource_persons: "Dr. M. Rao",
+        submitter_name: "Sneha",
+        submitter_email: "sneha@gnits.ac.in",
+        report_object_path: "submissions/iste-with-docs-1/report.pdf",
+        report_file_name: "main-report.pdf",
+        report_content_type: "application/pdf",
+        photo_object_paths: [],
+        photo_file_names: [],
+        document_object_paths: [
+          "submissions/iste-with-docs-1/doc_0_Circular.pdf",
+          "submissions/iste-with-docs-1/doc_1_Attendance.docx",
+        ],
+        document_file_names: ["Circular.pdf", "Attendance.docx"],
+        document_content_types: [
+          "application/pdf",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ],
+        document_download_urls: [
+          "/api/event-file?path=Circular.pdf",
+          "/api/event-file?path=Attendance.docx",
+        ],
+        created_at: "2026-10-06T12:00:00.000Z",
+        report_download_url: "/api/event-file?path=report.pdf",
+        photo_download_urls: [],
+      },
+    ]);
+
+    render(<AdminEventsView club={techClub} forumName="ISTE" forumSlug="iste" />);
+    expect(await screen.findByText("ISTE Cloud Seminar")).toBeTruthy();
+    expect(screen.getByText(/documents \(2\)/i)).toBeTruthy();
+    expect(screen.getByText("Circular.pdf")).toBeTruthy();
+    expect(screen.getByText("Attendance.docx")).toBeTruthy();
+  });
 });
