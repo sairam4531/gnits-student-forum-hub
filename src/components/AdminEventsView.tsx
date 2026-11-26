@@ -23,19 +23,23 @@ import {
   deleteAdminEventServerFn,
   type AdminEventRecord,
 } from "@/lib/admin.functions";
-import { type ForumClub } from "@/lib/student-forums";
+import { isInstitutionalClub, type ForumClub } from "@/lib/student-forums";
 import { getEventFileUrl } from "@/lib/event-file-storage";
 import {
   getClientAdminEvents,
   getClientEvents,
   deleteClientAdminEvent,
   deleteClientEvent,
+  EVENTS_KEY,
+  ADMIN_EVENTS_KEY,
+  DELETED_IDS_KEY,
 } from "@/lib/client-portal-store";
 
 interface AdminEventsViewProps {
   club: ForumClub;
   forumName: string;
   forumSlug: string;
+  academicYear?: string | undefined;
   onClose?: () => void;
 }
 
@@ -44,7 +48,14 @@ interface LoadedPhoto {
   name: string;
 }
 
-export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEventsViewProps) {
+export function AdminEventsView({
+  club,
+  forumName,
+  forumSlug,
+  academicYear,
+  onClose,
+}: AdminEventsViewProps) {
+  const isInstitutionalEvent = isInstitutionalClub(club.slug);
   const [events, setEvents] = useState<AdminEventRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -102,9 +113,9 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
           event_name: pub.event_name,
           event_start: pub.event_start,
           event_end: pub.event_end,
-          resource_persons: pub.resource_persons || "Not specified",
-          submitter_name: (pub as any).submitter_name || "Student Submitter",
-          submitter_email: (pub as any).submitter_email || "student@gnits.ac.in",
+          resource_persons: pub.resource_persons || (isInstitutionalEvent ? "" : "Not specified"),
+          submitter_name: (pub as any).submitter_name ?? (isInstitutionalEvent ? null : "Student Submitter"),
+          submitter_email: (pub as any).submitter_email ?? (isInstitutionalEvent ? null : "student@gnits.ac.in"),
           report_object_path: (pub as any).report_object_path || "",
           report_file_name: (pub as any).report_file_name || "Event_Report.pdf",
           report_content_type: (pub as any).report_content_type || "application/pdf",
@@ -171,9 +182,9 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
 
     const handleStorage = (e: StorageEvent) => {
       if (
-        e.key === "GNITS_EVENTS_PERSISTENT_DATA_V2" ||
-        e.key === "GNITS_ADMIN_EVENTS_PERSISTENT_DATA_V2" ||
-        e.key === "GNITS_DELETED_ITEMS_TRACKER_V2"
+        e.key === EVENTS_KEY ||
+        e.key === ADMIN_EVENTS_KEY ||
+        e.key === DELETED_IDS_KEY
       ) {
         fetchAdminEvents(true);
       }
@@ -277,24 +288,38 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
 
   // Excel Export for a single event
   const exportSingleEventToExcel = (event: AdminEventRecord) => {
-    const data = [
-      {
-        "Event ID": event.id,
-        "Event Name": event.event_name,
-        "Club Name": club.name,
-        "Forum Name": forumName,
-        "Club Slug": event.club_slug,
-        "Forum Slug": event.forum_slug,
-        "Start Date (From)": event.event_start,
-        "End Date (To)": event.event_end,
-        "Resource Persons": event.resource_persons,
-        "Submitter Name": event.submitter_name || "N/A",
-        "Submitter Email": event.submitter_email || "N/A",
-        "Report File Name": event.report_file_name,
-        "Photos Count": event.photo_file_names?.length || 0,
-        "Submitted On": new Date(event.created_at).toLocaleString(),
-      },
-    ];
+    const row: Record<string, string | number> = isInstitutionalEvent
+      ? {
+          "Event ID": event.id,
+          "Event Name": event.event_name,
+          "Club Name": club.name,
+          "Event Category": forumName,
+          "Academic Year": academicYear || "N/A",
+          "Club Slug": event.club_slug,
+          "Forum Slug": event.forum_slug,
+          "Start Date (From)": event.event_start,
+          "End Date (To)": event.event_end,
+          "Report File Name": event.report_file_name,
+          "Photos Count": event.photo_file_names?.length || 0,
+          "Submitted On": new Date(event.created_at).toLocaleString(),
+        }
+      : {
+          "Event ID": event.id,
+          "Event Name": event.event_name,
+          "Club Name": club.name,
+          "Forum Name": forumName,
+          "Club Slug": event.club_slug,
+          "Forum Slug": event.forum_slug,
+          "Start Date (From)": event.event_start,
+          "End Date (To)": event.event_end,
+          "Resource Persons": event.resource_persons,
+          "Submitter Name": event.submitter_name || "N/A",
+          "Submitter Email": event.submitter_email || "N/A",
+          "Report File Name": event.report_file_name,
+          "Photos Count": event.photo_file_names?.length || 0,
+          "Submitted On": new Date(event.created_at).toLocaleString(),
+        };
+    const data = [row];
 
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
@@ -309,20 +334,35 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
   const exportAllEventsToExcel = () => {
     if (events.length === 0) return;
 
-    const data = events.map((event, index) => ({
-      "S.No": index + 1,
-      "Event Name": event.event_name,
-      Forum: forumName,
-      Club: club.name,
-      "Start Date": event.event_start,
-      "End Date": event.event_end,
-      "Resource Persons": event.resource_persons,
-      "Student Submitter": event.submitter_name || "N/A",
-      "Submitter Email": event.submitter_email || "N/A",
-      "Report File": event.report_file_name,
-      "Photos Uploaded": event.photo_file_names?.length || 0,
-      "Submission Date": new Date(event.created_at).toLocaleString(),
-    }));
+    const data: Array<Record<string, string | number>> = events.map((event, index) =>
+      isInstitutionalEvent
+        ? {
+            "S.No": index + 1,
+            "Event Name": event.event_name,
+            "Event Category": forumName,
+            "Academic Year": academicYear || "N/A",
+            Club: club.name,
+            "Start Date": event.event_start,
+            "End Date": event.event_end,
+            "Report File": event.report_file_name,
+            "Photos Uploaded": event.photo_file_names?.length || 0,
+            "Submission Date": new Date(event.created_at).toLocaleString(),
+          }
+        : {
+            "S.No": index + 1,
+            "Event Name": event.event_name,
+            Forum: forumName,
+            Club: club.name,
+            "Start Date": event.event_start,
+            "End Date": event.event_end,
+            "Resource Persons": event.resource_persons,
+            "Student Submitter": event.submitter_name || "N/A",
+            "Submitter Email": event.submitter_email || "N/A",
+            "Report File": event.report_file_name,
+            "Photos Uploaded": event.photo_file_names?.length || 0,
+            "Submission Date": new Date(event.created_at).toLocaleString(),
+          },
+    );
 
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
@@ -380,12 +420,21 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
             <span>{club.name}</span>
             <span>•</span>
             <span className="text-foreground">{forumName}</span>
+            {academicYear && (
+              <>
+                <span>•</span>
+                <span className="text-orange-600">{academicYear}</span>
+              </>
+            )}
           </div>
           <h2 className="text-2xl sm:text-3xl font-black text-foreground mt-1">
             Submitted Events on {forumName}
+            {academicYear ? ` (${academicYear})` : ""}
           </h2>
           <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            Review event files, contact submitters, download reports &amp; photos, or delete events.
+            {isInstitutionalEvent
+              ? "Review event reports & photos, download files, export to Excel, or delete events."
+              : "Review event files, contact submitters, download reports & photos, or delete events."}
           </p>
         </div>
 
@@ -504,7 +553,16 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
                   </div>
 
                   {/* Event Details Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 py-4 text-xs sm:text-sm">
+                  <div
+                    className={`grid grid-cols-1 gap-4 py-4 text-xs sm:text-sm ${
+                      isInstitutionalEvent &&
+                      !ev.submitter_name &&
+                      !ev.submitter_email &&
+                      !ev.resource_persons?.trim()
+                        ? "md:grid-cols-1"
+                        : "md:grid-cols-2 lg:grid-cols-4"
+                    }`}
+                  >
                     {/* Date Range */}
                     <div className="flex items-start gap-2.5 rounded-xl bg-muted/40 p-3 border border-border/60">
                       <Calendar className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
@@ -519,46 +577,52 @@ export function AdminEventsView({ club, forumName, forumSlug, onClose }: AdminEv
                     </div>
 
                     {/* Submitter Name */}
-                    <div className="flex items-start gap-2.5 rounded-xl bg-muted/40 p-3 border border-border/60">
-                      <User className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
-                      <div className="min-w-0">
-                        <span className="block text-[11px] font-semibold text-muted-foreground uppercase">
-                          Student Submitter
-                        </span>
-                        <span className="font-bold text-foreground truncate block">
-                          {ev.submitter_name || "N/A"}
-                        </span>
+                    {(!isInstitutionalEvent || Boolean(ev.submitter_name)) && (
+                      <div className="flex items-start gap-2.5 rounded-xl bg-muted/40 p-3 border border-border/60">
+                        <User className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <span className="block text-[11px] font-semibold text-muted-foreground uppercase">
+                            Student Submitter
+                          </span>
+                          <span className="font-bold text-foreground truncate block">
+                            {ev.submitter_name || "N/A"}
+                          </span>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     {/* Submitter Email */}
-                    <div className="flex items-start gap-2.5 rounded-xl bg-muted/40 p-3 border border-border/60">
-                      <Mail className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
-                      <div className="min-w-0">
-                        <span className="block text-[11px] font-semibold text-muted-foreground uppercase">
-                          Submitter Email
-                        </span>
-                        <a
-                          href={`mailto:${ev.submitter_email}`}
-                          className="font-bold text-primary truncate block hover:underline"
-                        >
-                          {ev.submitter_email || "N/A"}
-                        </a>
+                    {(!isInstitutionalEvent || Boolean(ev.submitter_email)) && (
+                      <div className="flex items-start gap-2.5 rounded-xl bg-muted/40 p-3 border border-border/60">
+                        <Mail className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <span className="block text-[11px] font-semibold text-muted-foreground uppercase">
+                            Submitter Email
+                          </span>
+                          <a
+                            href={`mailto:${ev.submitter_email}`}
+                            className="font-bold text-primary truncate block hover:underline"
+                          >
+                            {ev.submitter_email || "N/A"}
+                          </a>
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     {/* Resource Persons */}
-                    <div className="flex items-start gap-2.5 rounded-xl bg-muted/40 p-3 border border-border/60">
-                      <Users className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
-                      <div className="min-w-0">
-                        <span className="block text-[11px] font-semibold text-muted-foreground uppercase">
-                          Resource Person(s)
-                        </span>
-                        <span className="font-semibold text-foreground line-clamp-2">
-                          {ev.resource_persons}
-                        </span>
+                    {(!isInstitutionalEvent || Boolean(ev.resource_persons?.trim())) && (
+                      <div className="flex items-start gap-2.5 rounded-xl bg-muted/40 p-3 border border-border/60">
+                        <Users className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <span className="block text-[11px] font-semibold text-muted-foreground uppercase">
+                            Resource Person(s)
+                          </span>
+                          <span className="font-semibold text-foreground line-clamp-2">
+                            {ev.resource_persons}
+                          </span>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
 
                   {/* Downloads Section: Report & Event Photos */}

@@ -8,7 +8,16 @@ import { StudentAffairsHeader } from "@/components/StudentAffairsHeader";
 import { ConductedEventsView } from "@/components/ConductedEventsView";
 import { AdminEventsView } from "@/components/AdminEventsView";
 import { EventsClubsDrawer } from "@/components/EventsClubsDrawer";
-import { forums, type ForumClub } from "@/lib/student-forums";
+import {
+  forums,
+  ACADEMIC_YEARS,
+  isInstitutionalClub,
+  normalizeAcademicYear,
+  institutionalForumSlugWithAy,
+  parseInstitutionalForumSlug,
+  type AcademicYear,
+  type ForumClub,
+} from "@/lib/student-forums";
 import {
   getAllPublicEventsServerFn,
   type PublicEventRecord,
@@ -27,16 +36,22 @@ interface EventSearchState {
   club?: string | undefined;
   forum?: string | undefined;
   slug?: string | undefined;
+  ay?: string | undefined;
   mode?: "admin" | undefined;
 }
 
 export const Route = createFileRoute("/events")({
   staleTime: 0,
   validateSearch: (search: Record<string, unknown>): EventSearchState => {
+    const club = (search["club"] as string) || "technical-events";
+    const ay = isInstitutionalClub(club)
+      ? normalizeAcademicYear(search["ay"] as string | undefined)
+      : undefined;
     return {
-      club: (search["club"] as string) || "technical-events",
+      club,
       forum: (search["forum"] as string) || "ISTE",
       slug: (search["slug"] as string) || "iste",
+      ay,
       mode: search["mode"] === "admin" ? "admin" : undefined,
     };
   },
@@ -56,7 +71,17 @@ function DedicatedEventPage() {
 
   const clubSlug = search.club || "technical-events";
   const forumName = search.forum || "ISTE";
-  const forumSlug = search.slug || "iste";
+  const rawSlug = search.slug || "iste";
+  const isInstitutional = isInstitutionalClub(clubSlug);
+  const parsedSlug = isInstitutional ? parseInstitutionalForumSlug(rawSlug) : { baseSlug: rawSlug };
+  const selectedAy: AcademicYear | undefined = isInstitutional
+    ? normalizeAcademicYear(search.ay) || parsedSlug.academicYear
+    : undefined;
+  const forumSlug = isInstitutional
+    ? selectedAy
+      ? institutionalForumSlugWithAy(parsedSlug.baseSlug, selectedAy)
+      : parsedSlug.baseSlug
+    : rawSlug;
   const wantsAdminView = search.mode === "admin";
 
   // Match the club or fallback to default
@@ -120,7 +145,8 @@ function DedicatedEventPage() {
   const handleSelectForum = (
     club: ForumClub,
     newForumName: string,
-    newForumSlug: string
+    newForumSlug: string,
+    academicYear?: AcademicYear,
   ) => {
     navigate({
       to: "/events",
@@ -128,6 +154,20 @@ function DedicatedEventPage() {
         club: club.slug,
         forum: newForumName,
         slug: newForumSlug,
+        ...(academicYear ? { ay: academicYear } : {}),
+        ...(isAdmin ? { mode: "admin" as const } : {}),
+      },
+    });
+  };
+
+  const handleSelectAy = (ay: AcademicYear) => {
+    navigate({
+      to: "/events",
+      search: {
+        club: selectedClub.slug,
+        forum: forumName,
+        slug: institutionalForumSlugWithAy(parsedSlug.baseSlug, ay),
+        ay,
         ...(isAdmin ? { mode: "admin" as const } : {}),
       },
     });
@@ -147,9 +187,10 @@ function DedicatedEventPage() {
         "Event Name": ev.event_name,
         "Club Slug": ev.club_slug,
         "Forum Slug": ev.forum_slug,
+        "Academic Year": parseInstitutionalForumSlug(ev.forum_slug).academicYear || "N/A",
         "From Date": ev.event_start,
         "To Date": ev.event_end,
-        "Resource Persons": ev.resource_persons,
+        "Resource Persons": ev.resource_persons || "N/A",
         "Submitter Name": ev.submitter_name || "N/A",
         "Submitter Email": ev.submitter_email || "N/A",
         "Report File": ev.report_file_name,
@@ -215,6 +256,15 @@ function DedicatedEventPage() {
             <span className="text-[#0f2757] font-extrabold truncate">
               {forumName}
             </span>
+
+            {isInstitutional && selectedAy && (
+              <>
+                <span className="text-slate-300">/</span>
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-orange-100 text-orange-800 border border-orange-200 flex-shrink-0">
+                  {selectedAy}
+                </span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -223,17 +273,71 @@ function DedicatedEventPage() {
       <main className="flex-1 py-8 sm:py-10">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
           <div className="rounded-3xl bg-white p-6 sm:p-8 md:p-10 border border-slate-200 shadow-xl animate-in fade-in duration-200">
-            {isAdmin ? (
+            {isInstitutional && (
+              <div className="mb-6 pb-5 border-b border-slate-200">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-orange-600 block">
+                      Academic Year
+                    </span>
+                    <h2 className="text-lg font-black text-slate-900">
+                      {forumName} — Select Academic Year
+                    </h2>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {ACADEMIC_YEARS.map((ay) => {
+                      const active = selectedAy === ay;
+                      return (
+                        <button
+                          key={ay}
+                          type="button"
+                          onClick={() => handleSelectAy(ay)}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                            active
+                              ? "bg-orange-500 text-white border-orange-600 shadow-sm"
+                              : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-orange-50 hover:text-orange-700 hover:border-orange-300"
+                          }`}
+                        >
+                          {ay}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {isInstitutional && !selectedAy ? (
+              <div className="py-10 text-center space-y-5">
+                <p className="text-sm font-semibold text-slate-600">
+                  Please choose an Academic Year above to view or manage {forumName} events.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 max-w-4xl mx-auto">
+                  {ACADEMIC_YEARS.map((ay) => (
+                    <button
+                      key={ay}
+                      type="button"
+                      onClick={() => handleSelectAy(ay)}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 hover:bg-orange-50 hover:border-orange-400 p-4 text-center font-black text-slate-800 hover:text-orange-700 transition-all shadow-xs cursor-pointer"
+                    >
+                      {ay}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : isAdmin ? (
               <AdminEventsView
                 club={selectedClub}
                 forumName={forumName}
                 forumSlug={forumSlug}
+                academicYear={selectedAy}
               />
             ) : (
               <ConductedEventsView
                 club={selectedClub}
                 forumName={forumName}
                 forumSlug={forumSlug}
+                academicYear={selectedAy}
                 isAdmin={false}
               />
             )}

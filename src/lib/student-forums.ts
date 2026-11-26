@@ -88,7 +88,57 @@ export const institutionalEvents = [
   "Student Welfare Fund (SWF)",
 ] as const;
 
+export const ACADEMIC_YEARS = [
+  "AY:2023-24",
+  "AY:2024-25",
+  "AY:2025-26",
+  "AY:2026-27",
+  "AY:2027-28",
+] as const;
+
+export type AcademicYear = (typeof ACADEMIC_YEARS)[number];
+
 export type ForumClub = (typeof forums)[number];
+
+export function isInstitutionalClub(clubSlug: string) {
+  return clubSlug === "institutional-events";
+}
+
+export function normalizeAcademicYear(ay?: string | null): AcademicYear | undefined {
+  if (!ay) return undefined;
+  const trimmed = ay.trim().toUpperCase();
+  return ACADEMIC_YEARS.find(
+    (entry) =>
+      entry.toUpperCase() === trimmed ||
+      toSlug(entry) === toSlug(trimmed) ||
+      entry.replace(/^AY:/i, "") === trimmed.replace(/^AY:/i, ""),
+  );
+}
+
+export function institutionalForumSlugWithAy(
+  forumNameOrBaseSlug: string,
+  academicYear?: string | null,
+): string {
+  const { baseSlug } = parseInstitutionalForumSlug(forumNameOrBaseSlug);
+  const cleanBase = toSlug(baseSlug);
+  const normalizedAy = normalizeAcademicYear(academicYear);
+  if (!normalizedAy) return cleanBase;
+  return `${cleanBase}--${toSlug(normalizedAy)}`;
+}
+
+export function parseInstitutionalForumSlug(slug: string): {
+  baseSlug: string;
+  academicYear?: AcademicYear;
+} {
+  const idx = slug.indexOf("--ay-");
+  if (idx === -1) {
+    return { baseSlug: slug };
+  }
+  const baseSlug = slug.slice(0, idx);
+  const ayPart = slug.slice(idx + 2);
+  const academicYear = normalizeAcademicYear(ayPart);
+  return academicYear ? { baseSlug, academicYear } : { baseSlug: slug };
+}
 
 export function toSlug(label: string) {
   return label

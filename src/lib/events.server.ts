@@ -107,6 +107,10 @@ export async function processStudentEventSubmission(
   let issuedEditToken: string | undefined;
   let nextEditTokenHash = existingStoreEvent?.edit_token_hash;
 
+  const normalizedResourcePersons = data.resourcePersons?.trim() || "";
+  const normalizedSubmitterName = data.submitterName?.trim() || null;
+  const normalizedSubmitterEmail = data.submitterEmail?.trim().toLowerCase() || null;
+
   if (isUpdate) {
     const session = await verifySession(adminSessionToken);
     let authorized = Boolean(session);
@@ -124,8 +128,8 @@ export async function processStudentEventSubmission(
       existingStoreEvent &&
       !existingStoreEvent.edit_token_hash &&
       !existingRemoteRow &&
-      existingStoreEvent.submitter_email?.trim().toLowerCase() ===
-        data.submitterEmail.trim().toLowerCase()
+      normalizedSubmitterEmail &&
+      existingStoreEvent.submitter_email?.trim().toLowerCase() === normalizedSubmitterEmail
     ) {
       authorized = true;
       issuedEditToken = globalThis.crypto.randomUUID();
@@ -276,9 +280,9 @@ export async function processStudentEventSubmission(
       event_name: data.eventName,
       event_start: data.eventStart,
       event_end: data.eventEnd,
-      resource_persons: data.resourcePersons,
-      submitter_name: data.submitterName,
-      submitter_email: data.submitterEmail,
+      resource_persons: normalizedResourcePersons,
+      submitter_name: normalizedSubmitterName,
+      submitter_email: normalizedSubmitterEmail,
       report_object_path: finalReportObjectPath,
       report_file_name: finalReportFileName,
       report_content_type: finalReportContentType,
@@ -317,9 +321,9 @@ export async function processStudentEventSubmission(
     event_name: data.eventName,
     event_start: data.eventStart,
     event_end: data.eventEnd,
-    resource_persons: data.resourcePersons,
-    submitter_name: data.submitterName,
-    submitter_email: data.submitterEmail,
+    resource_persons: normalizedResourcePersons,
+    submitter_name: normalizedSubmitterName,
+    submitter_email: normalizedSubmitterEmail,
     report_object_path: finalReportObjectPath,
     report_file_name: finalReportFileName,
     report_content_type: finalReportContentType,

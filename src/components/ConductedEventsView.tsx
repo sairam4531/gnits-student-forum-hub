@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { getPublicForumEvents, submitStudentEvent, type PublicEventRecord } from "@/lib/events.functions";
 import { type AdminEventRecord } from "@/lib/admin.functions";
-import { type ForumClub } from "@/lib/student-forums";
+import { isInstitutionalClub, type ForumClub } from "@/lib/student-forums";
 import {
   getClientEvents,
   saveClientEvent,
@@ -36,6 +36,7 @@ interface ConductedEventsViewProps {
   club: ForumClub;
   forumName: string;
   forumSlug: string;
+  academicYear?: string | undefined;
   onClose?: () => void;
   isAdmin?: boolean;
 }
@@ -64,9 +65,11 @@ export function ConductedEventsView({
   club,
   forumName,
   forumSlug,
+  academicYear,
   onClose,
   isAdmin = false,
 }: ConductedEventsViewProps) {
+  const isInstitutionalEvent = isInstitutionalClub(club.slug);
   const [events, setEvents] = useState<PublicEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -254,13 +257,15 @@ export function ConductedEventsView({
       setSubmitError("The end date must be on or after the start date.");
       return;
     }
-    if (!resourcePersons.trim()) {
-      setSubmitError("Please provide Resource Person names & designations.");
-      return;
-    }
-    if (!submitterName.trim() || !submitterEmail.trim()) {
-      setSubmitError("Submitter contact details are required.");
-      return;
+    if (!isInstitutionalEvent) {
+      if (!resourcePersons.trim()) {
+        setSubmitError("Please provide Resource Person names & designations.");
+        return;
+      }
+      if (!submitterName.trim() || !submitterEmail.trim()) {
+        setSubmitError("Submitter contact details are required.");
+        return;
+      }
     }
     if (!reportFile && !editingEventId && !existingReportName) {
       setSubmitError("Please upload the Event Report (PDF or Word format).");
@@ -348,6 +353,13 @@ export function ConductedEventsView({
       }
 
       const editToken = editingEventId ? getEventEditToken(editingEventId) : undefined;
+      const optionalForumFields = isInstitutionalEvent
+        ? {}
+        : {
+            resourcePersons: resourcePersons.trim(),
+            submitterName: submitterName.trim(),
+            submitterEmail: submitterEmail.trim().toLowerCase(),
+          };
 
       // 3. Commit to authoritative server database
       const res = await submitStudentEvent({
@@ -358,9 +370,7 @@ export function ConductedEventsView({
           eventName: eventName.trim(),
           eventStart,
           eventEnd,
-          resourcePersons: resourcePersons.trim(),
-          submitterName: submitterName.trim(),
-          submitterEmail: submitterEmail.trim().toLowerCase(),
+          ...optionalForumFields,
           reportObjectPath: finalReportPath,
           reportFileName: finalReportName,
           reportContentType: finalReportType,
@@ -388,9 +398,9 @@ export function ConductedEventsView({
           event_name: eventName.trim(),
           event_start: eventStart,
           event_end: eventEnd,
-          resource_persons: resourcePersons.trim(),
-          submitter_name: submitterName.trim(),
-          submitter_email: submitterEmail.trim().toLowerCase(),
+          resource_persons: isInstitutionalEvent ? "" : resourcePersons.trim(),
+          submitter_name: isInstitutionalEvent ? null : submitterName.trim(),
+          submitter_email: isInstitutionalEvent ? null : submitterEmail.trim().toLowerCase(),
           report_object_path: finalReportPath,
           report_file_name: finalReportName,
           report_content_type: finalReportType,
@@ -412,7 +422,7 @@ export function ConductedEventsView({
           event_start: eventStart,
           event_end: eventEnd,
           created_at: existingCreatedAt || new Date().toISOString(),
-          resource_persons: resourcePersons.trim(),
+          ...(isInstitutionalEvent ? {} : { resource_persons: resourcePersons.trim() }),
         },
         { broadcast: true },
       );
@@ -440,12 +450,20 @@ export function ConductedEventsView({
             <span>{club.name}</span>
             <span>•</span>
             <span className="text-foreground">{forumName}</span>
+            {academicYear && (
+              <>
+                <span>•</span>
+                <span className="text-orange-600">{academicYear}</span>
+              </>
+            )}
           </div>
           <h2 className="text-2xl sm:text-3xl font-black text-foreground mt-1">
             Conducted Events on {forumName}
+            {academicYear ? ` (${academicYear})` : ""}
           </h2>
           <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            Verified initiatives, technical workshops, and activities organized by {forumName}.
+            Verified initiatives, technical workshops, and activities organized by {forumName}
+            {academicYear ? ` for ${academicYear}` : ""}.
           </p>
         </div>
 
@@ -566,6 +584,7 @@ export function ConductedEventsView({
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider text-primary">
                   {club.name} • {forumName}
+                  {academicYear ? ` • ${academicYear}` : ""}
                 </span>
                 <h3 className="text-xl sm:text-2xl font-black text-foreground">
                   {editingEventId ? `Edit & Resubmit Event on ${forumName}` : `Add New Event on ${forumName}`}
@@ -662,57 +681,61 @@ export function ConductedEventsView({
                   </div>
                 </div>
 
-                {/* Resource Person names */}
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-foreground mb-1.5">
-                    Resource Person Names &amp; Designations *
-                  </label>
-                  <textarea
-                    required
-                    rows={2}
-                    maxLength={2000}
-                    value={resourcePersons}
-                    onChange={(e) => setResourcePersons(e.target.value)}
-                    placeholder="e.g. Dr. K. Radhika (Principal Scientist), Mr. Amit Sharma (Director of Engineering, Google)"
-                    className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
+                {!isInstitutionalEvent && (
+                  <>
+                    {/* Resource Person names */}
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-foreground mb-1.5">
+                        Resource Person Names &amp; Designations *
+                      </label>
+                      <textarea
+                        required
+                        rows={2}
+                        maxLength={2000}
+                        value={resourcePersons}
+                        onChange={(e) => setResourcePersons(e.target.value)}
+                        placeholder="e.g. Dr. K. Radhika (Principal Scientist), Mr. Amit Sharma (Director of Engineering, Google)"
+                        className="w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      />
+                    </div>
 
-                {/* Submitter Name & Email */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-foreground mb-1.5">
-                      Submitter Name *
-                    </label>
-                    <div className="relative">
-                      <User className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
-                      <input
-                        type="text"
-                        required
-                        value={submitterName}
-                        onChange={(e) => setSubmitterName(e.target.value)}
-                        placeholder="e.g. Ananya Reddy"
-                        className="w-full rounded-xl border border-input bg-background pl-10 pr-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                      />
+                    {/* Submitter Name & Email */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-foreground mb-1.5">
+                          Submitter Name *
+                        </label>
+                        <div className="relative">
+                          <User className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
+                          <input
+                            type="text"
+                            required
+                            value={submitterName}
+                            onChange={(e) => setSubmitterName(e.target.value)}
+                            placeholder="e.g. Ananya Reddy"
+                            className="w-full rounded-xl border border-input bg-background pl-10 pr-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-foreground mb-1.5">
+                          Submitter Student Email *
+                        </label>
+                        <div className="relative">
+                          <Mail className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
+                          <input
+                            type="email"
+                            required
+                            value={submitterEmail}
+                            onChange={(e) => setSubmitterEmail(e.target.value)}
+                            placeholder="e.g. 21251a05xx@gnits.ac.in"
+                            className="w-full rounded-xl border border-input bg-background pl-10 pr-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          />
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-foreground mb-1.5">
-                      Submitter Student Email *
-                    </label>
-                    <div className="relative">
-                      <Mail className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
-                      <input
-                        type="email"
-                        required
-                        value={submitterEmail}
-                        onChange={(e) => setSubmitterEmail(e.target.value)}
-                        placeholder="e.g. 21251a05xx@gnits.ac.in"
-                        className="w-full rounded-xl border border-input bg-background pl-10 pr-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                      />
-                    </div>
-                  </div>
-                </div>
+                  </>
+                )}
 
                 {/* Event Report format (PDF / Word) */}
                 <div>

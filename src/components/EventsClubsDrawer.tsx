@@ -30,7 +30,11 @@ import { GnitsCollegeLogo } from "@/components/GnitsCollegeLogo";
 import {
   forums,
   institutionalEvents,
+  ACADEMIC_YEARS,
+  institutionalForumSlugWithAy,
+  isInstitutionalClub,
   toSlug,
+  type AcademicYear,
   type ForumClub,
 } from "@/lib/student-forums";
 import type { PublicEventRecord } from "@/lib/events.functions";
@@ -38,8 +42,18 @@ import type { PublicEventRecord } from "@/lib/events.functions";
 interface EventsClubsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelectForum: (club: ForumClub, forumName: string, forumSlug: string) => void;
-  onOpenSubmitModal?: (club: ForumClub, forumName: string, forumSlug: string) => void;
+  onSelectForum: (
+    club: ForumClub,
+    forumName: string,
+    forumSlug: string,
+    academicYear?: AcademicYear,
+  ) => void;
+  onOpenSubmitModal?: (
+    club: ForumClub,
+    forumName: string,
+    forumSlug: string,
+    academicYear?: AcademicYear,
+  ) => void;
   onSelectDashboard?: () => void;
   isAdmin?: boolean;
   adminProfile?: {
@@ -72,6 +86,9 @@ export function EventsClubsDrawer({
 
   // Sub-accordion state inside Student Forums: None expanded initially
   const [expandedForumCat, setExpandedForumCat] = useState<string | null>(null);
+
+  // Inline AY accordion state inside search results for institutional events
+  const [expandedSearchEvent, setExpandedSearchEvent] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -174,6 +191,12 @@ export function EventsClubsDrawer({
   const handleSelect = (club: ForumClub, forumName: string) => {
     const slug = toSlug(forumName);
     onSelectForum(club, forumName, slug);
+    onClose();
+  };
+
+  const handleSelectInstitutionalAy = (eventName: string, ay: AcademicYear) => {
+    const slug = institutionalForumSlugWithAy(eventName, ay);
+    onSelectForum(institutionalClub as ForumClub, eventName, slug, ay);
     onClose();
   };
 
@@ -281,22 +304,61 @@ export function EventsClubsDrawer({
                   <p className="text-[11px] font-semibold">No events match "{searchTerm}"</p>
                 </div>
               ) : (
-                searchResults.map((item, idx) => (
-                  <button
-                    key={`${item.name}-${idx}`}
-                    type="button"
-                    onClick={() => handleSelect(item.club as ForumClub, item.name)}
-                    className="w-full flex items-center justify-between p-2 rounded-lg bg-white hover:bg-orange-50/80 hover:text-orange-700 transition-colors text-left border border-slate-100 cursor-pointer"
-                  >
-                    <div>
-                      <span className="text-[9px] font-bold text-orange-600 uppercase tracking-wider block">
-                        {item.group}
-                      </span>
-                      <span className="font-semibold text-slate-900">{item.name}</span>
+                searchResults.map((item, idx) => {
+                  const isInst = isInstitutionalClub(item.club.slug);
+                  const isSearchExpanded = isInst && expandedSearchEvent === item.name;
+                  return (
+                    <div key={`${item.name}-${idx}`} className="rounded-lg border border-slate-100 bg-white overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isInst) {
+                            setExpandedSearchEvent((prev) =>
+                              prev === item.name ? null : item.name,
+                            );
+                          } else {
+                            handleSelect(item.club as ForumClub, item.name);
+                          }
+                        }}
+                        className="w-full flex items-center justify-between p-2 bg-white hover:bg-orange-50/80 hover:text-orange-700 transition-colors text-left cursor-pointer"
+                      >
+                        <div>
+                          <span className="text-[9px] font-bold text-orange-600 uppercase tracking-wider block">
+                            {item.group}
+                          </span>
+                          <span className="font-semibold text-slate-900">{item.name}</span>
+                        </div>
+                        {isInst ? (
+                          isSearchExpanded ? (
+                            <ChevronDown className="h-3.5 w-3.5 text-orange-600" />
+                          ) : (
+                            <ChevronRight className="h-3.5 w-3.5 text-orange-500" />
+                          )
+                        ) : (
+                          <span className="text-orange-500 font-bold">➤</span>
+                        )}
+                      </button>
+
+                      {isSearchExpanded && (
+                        <div className="bg-slate-50 pl-4 pr-2 py-1 space-y-0.5 border-t border-slate-100">
+                          {ACADEMIC_YEARS.map((ay) => (
+                            <button
+                              key={ay}
+                              type="button"
+                              onClick={() => handleSelectInstitutionalAy(item.name, ay)}
+                              className="w-full flex items-center gap-2 py-1.5 text-left text-slate-700 hover:text-orange-600 transition-colors group cursor-pointer"
+                            >
+                              <span className="text-[11px] text-orange-500 font-bold flex-shrink-0">
+                                ➤
+                              </span>
+                              <span className="font-semibold">{ay}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <span className="text-orange-500 font-bold">➤</span>
-                  </button>
-                ))
+                  );
+                })
               )}
             </div>
           ) : (
@@ -415,21 +477,54 @@ export function EventsClubsDrawer({
                 );
               }
 
-              /* 2. Institutional Events: Direct click opens dedicated event page */
+              /* 2. Institutional Events (all events except Student Forums): Expand into AY:2023-24 .. AY:2027-28 */
+              const isEventExpanded = expandedEvent === item.name;
               return (
                 <div key={item.name} className="bg-white">
                   <button
                     type="button"
-                    onClick={() => handleSelect(institutionalClub, item.name)}
-                    className="w-full flex items-center justify-between px-3 py-2.5 bg-white text-slate-800 hover:bg-orange-50/70 hover:text-orange-700 font-medium transition-colors text-left cursor-pointer group"
+                    onClick={() => toggleEvent(item.name)}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 transition-all text-left cursor-pointer group ${
+                      isEventExpanded
+                        ? "bg-orange-50 text-orange-800 font-bold"
+                        : "bg-white text-slate-800 hover:bg-orange-50/70 hover:text-orange-700 font-medium"
+                    }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0 pr-1">
-                      <IconComp className="h-4 w-4 flex-shrink-0 text-slate-600 group-hover:text-orange-600 transition-colors" />
+                      <IconComp
+                        className={`h-4 w-4 flex-shrink-0 transition-colors ${
+                          isEventExpanded
+                            ? "text-orange-600"
+                            : "text-slate-600 group-hover:text-orange-600"
+                        }`}
+                      />
                       <span className="truncate tracking-tight">{item.name}</span>
                     </div>
 
-                    <ChevronRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-orange-600 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+                    {isEventExpanded ? (
+                      <ChevronDown className="h-3.5 w-3.5 text-orange-600 flex-shrink-0" />
+                    ) : (
+                      <ChevronRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-orange-600 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+                    )}
                   </button>
+
+                  {isEventExpanded && (
+                    <div className="bg-slate-50/90 pl-7 pr-3 py-1.5 space-y-0.5 border-l-2 border-orange-400 ml-5 my-1 animate-in slide-in-from-top-1 duration-150">
+                      {ACADEMIC_YEARS.map((ay) => (
+                        <button
+                          key={ay}
+                          type="button"
+                          onClick={() => handleSelectInstitutionalAy(item.name, ay)}
+                          className="w-full flex items-center gap-2 py-1.5 text-left text-slate-700 hover:text-orange-600 transition-colors group cursor-pointer"
+                        >
+                          <span className="text-[11px] text-orange-500 font-bold flex-shrink-0 group-hover:translate-x-0.5 transition-transform">
+                            ➤
+                          </span>
+                          <span className="truncate font-semibold">{ay}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })

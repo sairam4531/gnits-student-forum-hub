@@ -2,11 +2,19 @@ import { QueryClient } from "@tanstack/react-query";
 import { createRouter, rootRouteId } from "@tanstack/react-router";
 
 import { routeTree } from "@/routeTree.gen";
-import { forums, findClub, forumSlug } from "@/lib/student-forums";
+import {
+  forums,
+  findClub,
+  forumSlug,
+  ACADEMIC_YEARS,
+  institutionalForumSlugWithAy,
+  parseInstitutionalForumSlug,
+} from "@/lib/student-forums";
 import {
   isSupportedReport,
   isSupportedPhoto,
   isSubmissionPath,
+  isKnownForum,
   eventSubmissionSchema,
 } from "@/lib/event-validation";
 import { getLocalEvents, saveLocalEvent, deleteLocalEvent } from "@/lib/local-events-store";
@@ -300,5 +308,50 @@ describe("App routing", () => {
     expect(merged.videos).toHaveLength(1);
     expect(getClientHomepageData().dean.name).toBe("Dr. Aparna Palle");
     expect(localStorage.getItem(HOMEPAGE_KEY)).toContain("Dr. Aparna Palle");
+  });
+
+  it("supports AY:2023-24 through AY:2027-28 for institutional events while leaving Student Forums untouched", async () => {
+    expect(ACADEMIC_YEARS).toEqual([
+      "AY:2023-24",
+      "AY:2024-25",
+      "AY:2025-26",
+      "AY:2026-27",
+      "AY:2027-28",
+    ]);
+
+    const scopedSlug = institutionalForumSlugWithAy("Annual day", "AY:2024-25");
+    expect(scopedSlug).toBe("annual-day--ay-2024-25");
+    expect(parseInstitutionalForumSlug(scopedSlug)).toEqual({
+      baseSlug: "annual-day",
+      academicYear: "AY:2024-25",
+    });
+
+    expect(isKnownForum("institutional-events", scopedSlug)).toBe(true);
+    expect(isKnownForum("institutional-events", "annual-day--ay-1999-00")).toBe(false);
+    expect(isKnownForum("technical-events", "iste")).toBe(true);
+    expect(isKnownForum("technical-events", "iste--ay-2024-25")).toBe(false);
+
+    const { Route: EventsRoute } = await import("@/routes/events");
+    const validateSearch = EventsRoute.options.validateSearch as (
+      search: Record<string, unknown>,
+    ) => { club?: string; forum?: string; slug?: string; ay?: string; mode?: string };
+
+    const instSearch = validateSearch({
+      club: "institutional-events",
+      forum: "Annual day",
+      slug: scopedSlug,
+      ay: "AY:2024-25",
+      mode: "admin",
+    });
+    expect(instSearch.ay).toBe("AY:2024-25");
+    expect(instSearch.mode).toBe("admin");
+
+    const studentForumSearch = validateSearch({
+      club: "technical-events",
+      forum: "ISTE",
+      slug: "iste",
+      ay: "AY:2024-25",
+    });
+    expect(studentForumSearch.ay).toBeUndefined();
   });
 });

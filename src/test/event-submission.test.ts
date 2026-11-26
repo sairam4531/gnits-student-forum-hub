@@ -158,6 +158,34 @@ describe("Event Submission Flow & Security Audit", () => {
       expect(result.success).toBe(false);
     });
 
+    it("rejects Student Forums payload missing resourcePersons or submitterName", () => {
+      const missingFields = {
+        ...validEvent,
+        resourcePersons: "",
+        submitterName: "",
+      };
+      const result = eventSubmissionSchema.safeParse(missingFields);
+      expect(result.success).toBe(false);
+    });
+
+    it("accepts institutional events with AY without resourcePersons, submitterName, or submitterEmail", () => {
+      const instEvent = {
+        id: validSubId,
+        clubSlug: "institutional-events",
+        forumSlug: "annual-day--ay-2024-25",
+        eventName: "Annual Day Celebration 2024-25",
+        eventStart: "2025-03-10",
+        eventEnd: "2025-03-10",
+        reportObjectPath: `submissions/${validSubId}/report.pdf`,
+        reportFileName: "report.pdf",
+        reportContentType: "application/pdf",
+        photoObjectPaths: [`submissions/${validSubId}/0_photo.jpg`],
+        photoFileNames: ["photo.jpg"],
+      };
+      const result = eventSubmissionSchema.safeParse(instEvent);
+      expect(result.success).toBe(true);
+    });
+
     it("rejects attachments stored outside the event's own submission folder", () => {
       const wrongFolder = {
         ...validEvent,

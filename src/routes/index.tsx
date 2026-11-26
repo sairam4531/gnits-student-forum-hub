@@ -197,14 +197,20 @@ function StudentAffairsPortalPage() {
     };
   }, [refreshFromClientStore]);
 
-  // When clicking any event (like ISTE), navigate to dedicated new page
-  const handleSelectForum = (club: ForumClub, forumName: string, forumSlug: string) => {
+  // When clicking any event (like ISTE or Annual day AY:2024-25), navigate to dedicated new page
+  const handleSelectForum = (
+    club: ForumClub,
+    forumName: string,
+    forumSlug: string,
+    academicYear?: string,
+  ) => {
     navigate({
       to: "/events",
       search: {
         club: club.slug,
         forum: forumName,
         slug: forumSlug,
+        ...(academicYear ? { ay: academicYear } : {}),
       },
     });
   };

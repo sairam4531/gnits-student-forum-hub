@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-import { forums, forumSlug } from "@/lib/student-forums";
+import {
+  forums,
+  forumSlug,
+  isInstitutionalClub,
+  parseInstitutionalForumSlug,
+} from "@/lib/student-forums";
 
 const eventDetailsShape = {
   clubSlug: z.string().min(1).max(80),
@@ -8,9 +13,9 @@ const eventDetailsShape = {
   eventName: z.string().trim().min(1).max(160),
   eventStart: z.string().date(),
   eventEnd: z.string().date(),
-  resourcePersons: z.string().trim().min(1).max(2000),
-  submitterName: z.string().trim().min(1).max(120),
-  submitterEmail: z.string().trim().email().max(254),
+  resourcePersons: z.string().trim().max(2000).optional(),
+  submitterName: z.string().trim().max(120).optional(),
+  submitterEmail: z.string().trim().max(254).optional(),
 };
 
 function addEventDetailsIssues(
@@ -30,6 +35,40 @@ function addEventDetailsIssues(
       path: ["forumSlug"],
       message: "Choose a forum from the GNITS list.",
     });
+  }
+  // Student Forums require resource persons, submitter name, and valid student email;
+  // non-Student-Forum (institutional) events do not ask for or require these fields.
+  if (!isInstitutionalClub(event.clubSlug)) {
+    if (!event.resourcePersons || event.resourcePersons.trim().length === 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["resourcePersons"],
+        message: "Please provide Resource Person names & designations.",
+      });
+    }
+    if (!event.submitterName || event.submitterName.trim().length === 0) {
+      context.addIssue({
+        code: "custom",
+        path: ["submitterName"],
+        message: "Submitter name is required.",
+      });
+    }
+    const email = event.submitterEmail?.trim() || "";
+    if (!email || !z.string().email().safeParse(email).success) {
+      context.addIssue({
+        code: "custom",
+        path: ["submitterEmail"],
+        message: "Valid submitter email is required.",
+      });
+    }
+  } else if (event.submitterEmail && event.submitterEmail.trim().length > 0) {
+    if (!z.string().email().safeParse(event.submitterEmail.trim()).success) {
+      context.addIssue({
+        code: "custom",
+        path: ["submitterEmail"],
+        message: "Valid submitter email is required.",
+      });
+    }
   }
 }
 
@@ -83,7 +122,15 @@ export type EventSubmission = z.infer<typeof eventSubmissionSchema>;
 
 export function isKnownForum(clubSlug: string, selectedForumSlug: string) {
   const club = forums.find((entry) => entry.slug === clubSlug);
-  return Boolean(club?.forums.some((forum) => forumSlug(club.slug, forum) === selectedForumSlug));
+  if (!club) return false;
+  if (isInstitutionalClub(clubSlug)) {
+    const { baseSlug, academicYear } = parseInstitutionalForumSlug(selectedForumSlug);
+    if (selectedForumSlug.includes("--ay-") && !academicYear) {
+      return false;
+    }
+    return club.forums.some((forum) => forumSlug(club.slug, forum) === baseSlug);
+  }
+  return club.forums.some((forum) => forumSlug(club.slug, forum) === selectedForumSlug);
 }
 
 export function isSubmissionPath(path: string) {

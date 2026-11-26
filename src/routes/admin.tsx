@@ -16,6 +16,7 @@ import { DeanDetailsManage } from "@/components/admin/DeanDetailsManage";
 import { StudentAffairsHeader } from "@/components/StudentAffairsHeader";
 import { EventsClubsDrawer } from "@/components/EventsClubsDrawer";
 import { LoopVideoShowcase } from "@/components/LoopVideoShowcase";
+import { parseInstitutionalForumSlug } from "@/lib/student-forums";
 import {
   adminLoginServerFn,
   getAdminSessionServerFn,
@@ -235,9 +236,10 @@ function AdminPage() {
         "Event Name": ev.event_name,
         "Club Slug": ev.club_slug,
         "Forum Slug": ev.forum_slug,
+        "Academic Year": parseInstitutionalForumSlug(ev.forum_slug).academicYear || "N/A",
         "From Date": ev.event_start,
         "To Date": ev.event_end,
-        "Resource Persons": ev.resource_persons,
+        "Resource Persons": ev.resource_persons || "N/A",
         "Submitter Name": ev.submitter_name || "N/A",
         "Submitter Email": ev.submitter_email || "N/A",
         "Report File": ev.report_file_name,
@@ -369,13 +371,14 @@ function AdminPage() {
         <EventsClubsDrawer
           isOpen={isDrawerOpen}
           onClose={() => setIsDrawerOpen(false)}
-          onSelectForum={(club, forumName, forumSlug) => {
+          onSelectForum={(club, forumName, forumSlug, academicYear) => {
             navigate({
               to: "/events",
               search: {
                 club: club.slug,
                 forum: forumName,
                 slug: forumSlug,
+                ...(academicYear ? { ay: academicYear } : {}),
               },
             });
           }}
@@ -469,13 +472,14 @@ function AdminPage() {
       <EventsClubsDrawer
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
-        onSelectForum={(club, forumName, forumSlug) => {
+        onSelectForum={(club, forumName, forumSlug, academicYear) => {
           navigate({
             to: "/events",
             search: {
               club: club.slug,
               forum: forumName,
               slug: forumSlug,
+              ...(academicYear ? { ay: academicYear } : {}),
               mode: "admin",
             },
           });
