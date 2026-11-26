@@ -448,20 +448,23 @@ describe("Event Submission Flow & Security Audit", () => {
         };
         await expect(saveEventsStoreAsync([])).rejects.toThrow(/rate limit/i);
         await expect(
-          processStudentEventSubmission({
-            id: subId1,
-            clubSlug: "institutional-events",
-            forumSlug: "annual-day--ay-2023-24",
-            eventName: "Should Fail Cleanly",
-            eventStart: "2024-03-10",
-            eventEnd: "2024-03-10",
-            reportObjectPath: reportPath1,
-            reportFileName: "report.pdf",
-            reportContentType: "application/pdf",
-            photoObjectPaths: [],
-            photoFileNames: [],
-            reportBase64: samplePdfBase64,
-          }),
+          processStudentEventSubmission(
+            {
+              id: subId1,
+              clubSlug: "institutional-events",
+              forumSlug: "annual-day--ay-2023-24",
+              eventName: "Should Fail Cleanly",
+              eventStart: "2024-03-10",
+              eventEnd: "2024-03-10",
+              reportObjectPath: reportPath1,
+              reportFileName: "report.pdf",
+              reportContentType: "application/pdf",
+              photoObjectPaths: [],
+              photoFileNames: [],
+              reportBase64: samplePdfBase64,
+            },
+            undefined,
+          ),
         ).rejects.toThrow(/Failed to save event submission to Cloudflare KV/i);
 
         // 2. Concurrent event injected into KV during file upload is preserved (no read-before-upload overwrite)
@@ -504,20 +507,23 @@ describe("Event Submission Flow & Security Audit", () => {
           KV: raceKv,
         };
 
-        const okRes = await processStudentEventSubmission({
-          id: subId2,
-          clubSlug: "institutional-events",
-          forumSlug: "annual-day--ay-2023-24",
-          eventName: "Second Event After Concurrent Write",
-          eventStart: "2024-03-11",
-          eventEnd: "2024-03-11",
-          reportObjectPath: reportPath2,
-          reportFileName: "report.pdf",
-          reportContentType: "application/pdf",
-          photoObjectPaths: [],
-          photoFileNames: [],
-          reportBase64: samplePdfBase64,
-        });
+        const okRes = await processStudentEventSubmission(
+          {
+            id: subId2,
+            clubSlug: "institutional-events",
+            forumSlug: "annual-day--ay-2023-24",
+            eventName: "Second Event After Concurrent Write",
+            eventStart: "2024-03-11",
+            eventEnd: "2024-03-11",
+            reportObjectPath: reportPath2,
+            reportFileName: "report.pdf",
+            reportContentType: "application/pdf",
+            photoObjectPaths: [],
+            photoFileNames: [],
+            reportBase64: samplePdfBase64,
+          },
+          undefined,
+        );
         expect(okRes.success).toBe(true);
         const storedEvents = JSON.parse(kvState.get("events_store") as string) as Array<{ id: string }>;
         expect(storedEvents.map((e) => e.id)).toContain("concurrent-evt-1");
