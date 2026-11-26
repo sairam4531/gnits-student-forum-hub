@@ -16,6 +16,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
+  PlusCircle,
+  Edit3,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import {
@@ -25,6 +27,7 @@ import {
 } from "@/lib/admin.functions";
 import { isInstitutionalClub, type ForumClub } from "@/lib/student-forums";
 import { getEventFileUrl } from "@/lib/event-file-storage";
+import { EventSubmissionModal } from "@/components/EventSubmissionModal";
 import {
   getClientAdminEvents,
   getClientEvents,
@@ -42,6 +45,10 @@ interface AdminEventsViewProps {
   forumName: string;
   forumSlug: string;
   academicYear?: string | undefined;
+  portalRole?: "admin" | "it-admin" | undefined;
+  canAdd?: boolean | undefined;
+  canEdit?: boolean | undefined;
+  canDelete?: boolean | undefined;
   onClose?: () => void;
 }
 
@@ -55,12 +62,32 @@ export function AdminEventsView({
   forumName,
   forumSlug,
   academicYear,
+  portalRole = "it-admin",
+  canAdd = false,
+  canEdit = false,
+  canDelete,
   onClose,
 }: AdminEventsViewProps) {
   const isInstitutionalEvent = isInstitutionalClub(club.slug);
+  const effectiveRole = portalRole;
+  const allowAdd = canAdd;
+  const allowEdit = canEdit;
+  const allowDelete = canDelete ?? effectiveRole === "it-admin";
   const [events, setEvents] = useState<AdminEventRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingEvent, setEditingEvent] = useState<AdminEventRecord | null>(null);
+
+  const openAddModal = () => {
+    setEditingEvent(null);
+    setModalOpen(true);
+  };
+
+  const openEditModal = (ev: AdminEventRecord) => {
+    setEditingEvent(ev);
+    setModalOpen(true);
+  };
 
   // Map of eventId -> loaded photo preview URLs
   const [eventPhotosMap, setEventPhotosMap] = useState<Record<string, LoadedPhoto[]>>({});
@@ -458,7 +485,13 @@ export function AdminEventsView({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-border">
         <div>
           <div className="flex items-center gap-2 text-xs font-bold text-primary uppercase tracking-wider">
-            <span>ADMIN REVIEW CONSOLE</span>
+            <span>
+              {effectiveRole === "it-admin"
+                ? "IT-ADMIN REVIEW CONSOLE"
+                : allowAdd
+                  ? "ADMIN EVENT WORKSPACE"
+                  : "ADMIN PORTAL VIEW"}
+            </span>
             <span>•</span>
             <span>{club.name}</span>
             <span>•</span>
@@ -475,13 +508,28 @@ export function AdminEventsView({
             {academicYear ? ` (${academicYear})` : ""}
           </h2>
           <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            {isInstitutionalEvent
-              ? "Review event reports & photos, download files, export to Excel, or delete events."
-              : "Review event files, contact submitters, download reports & photos, or delete events."}
+            {effectiveRole === "it-admin"
+              ? isInstitutionalEvent
+                ? "IT-Admin workspace: add, edit, review, export to Excel, or delete institutional event records."
+                : "IT-Admin review console: inspect submitted reports, documents & photos, export to Excel, or delete events."
+              : allowAdd
+                ? `Category Admin workspace: upload and edit ${club.name} event data to submit to IT-Admin.`
+                : "Read-only view: inspect uploaded reports, documents, and photos for this club."}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          {allowAdd && (
+            <button
+              type="button"
+              onClick={openAddModal}
+              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-xs sm:text-sm font-bold text-primary-foreground shadow-md hover:bg-primary/90 transition-all hover:scale-102 cursor-pointer"
+            >
+              <PlusCircle className="h-4 w-4" />
+              <span>Add New Event on {forumName}</span>
+            </button>
+          )}
+
           {events.length > 0 && (
             <button
               type="button"
@@ -512,7 +560,7 @@ export function AdminEventsView({
         {loading ? (
           <div className="flex items-center justify-center py-8 gap-3 text-muted-foreground">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            <span className="text-sm font-medium">Loading submitted events from user side...</span>
+            <span className="text-sm font-medium">Loading submitted events...</span>
           </div>
         ) : error ? (
           <div className="rounded-xl bg-destructive/10 p-4 text-sm text-destructive border border-destructive/20 flex items-center gap-3">
@@ -525,12 +573,25 @@ export function AdminEventsView({
               <Calendar className="h-6 w-6" />
             </div>
             <h4 className="mt-3 text-base font-bold text-foreground">
-              No events submitted for {forumName} yet
+              {allowAdd
+                ? `No events uploaded for ${forumName} yet`
+                : `No events submitted for ${forumName} yet`}
             </h4>
             <p className="mt-1 text-xs sm:text-sm text-muted-foreground max-w-md mx-auto">
-              When students submit conducted event reports from the student view, they will appear
-              here for administrative downloads, photo viewing, and Excel compilation.
+              {allowAdd
+                ? "Click below to upload the event report, supporting documents, and photos for this club."
+                : "Uploaded reports, supporting documents, and event photos will appear here once submitted."}
             </p>
+            {allowAdd && (
+              <button
+                type="button"
+                onClick={openAddModal}
+                className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-xs sm:text-sm font-bold text-primary-foreground shadow-md hover:bg-primary/90 transition-all cursor-pointer"
+              >
+                <PlusCircle className="h-4 w-4" />
+                <span>Add New Event on {forumName}</span>
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-6">
@@ -565,7 +626,7 @@ export function AdminEventsView({
                       </h3>
                     </div>
 
-                    {/* Top Action Buttons: Excel Export & Delete Event */}
+                    {/* Top Action Buttons: Excel Export, Edit & Delete Event */}
                     <div className="flex items-center gap-2 self-start sm:self-auto">
                       <button
                         type="button"
@@ -577,21 +638,34 @@ export function AdminEventsView({
                         <span>Excel</span>
                       </button>
 
-                      {/* Delete Event Button for Administrator */}
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteEvent(ev)}
-                        disabled={deletingId === ev.id}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100 hover:border-rose-400 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
-                        title="Delete this event from all clubs and events"
-                      >
-                        {deletingId === ev.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin text-rose-600" />
-                        ) : (
-                          <Trash2 className="h-3.5 w-3.5 text-rose-600" />
-                        )}
-                        <span>Delete Event</span>
-                      </button>
+                      {allowEdit && (
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(ev)}
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-bold text-primary hover:bg-primary/20 transition-colors shadow-2xs cursor-pointer"
+                          title="Edit this event's report, documents, photos, and metadata"
+                        >
+                          <Edit3 className="h-3.5 w-3.5" />
+                          <span>Edit</span>
+                        </button>
+                      )}
+
+                      {allowDelete && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteEvent(ev)}
+                          disabled={deletingId === ev.id}
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100 hover:border-rose-400 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+                          title="Delete this event from all clubs and events"
+                        >
+                          {deletingId === ev.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-rose-600" />
+                          ) : (
+                            <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                          )}
+                          <span>Delete Event</span>
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -909,6 +983,32 @@ export function AdminEventsView({
             )}
           </div>
         </div>
+      )}
+
+      {(allowAdd || allowEdit) && (
+        <EventSubmissionModal
+          isOpen={modalOpen}
+          onClose={() => {
+            setModalOpen(false);
+            setEditingEvent(null);
+          }}
+          club={club}
+          forumName={forumName}
+          forumSlug={forumSlug}
+          academicYear={academicYear}
+          editingEvent={editingEvent}
+          targetRoleLabel={effectiveRole === "it-admin" ? "Portal" : "IT-Admin"}
+          onSubmitted={async (savedEv) => {
+            setEvents((prev) => {
+              const exists = prev.some((item) => item.id === savedEv.id);
+              if (exists) {
+                return prev.map((item) => (item.id === savedEv.id ? savedEv : item));
+              }
+              return [savedEv, ...prev];
+            });
+            await fetchAdminEvents(true);
+          }}
+        />
       )}
     </div>
   );

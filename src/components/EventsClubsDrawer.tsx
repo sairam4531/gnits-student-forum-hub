@@ -56,6 +56,9 @@ interface EventsClubsDrawerProps {
   ) => void;
   onSelectDashboard?: () => void;
   isAdmin?: boolean;
+  portalMode?: "student" | "admin" | "it-admin" | undefined;
+  allowedClubSlug?: string | null | undefined;
+  portalLabel?: string | undefined;
   adminProfile?: {
     username: string;
     display_name: string;
@@ -73,11 +76,16 @@ export function EventsClubsDrawer({
   onSelectForum,
   onSelectDashboard,
   isAdmin = false,
+  portalMode,
+  allowedClubSlug = null,
+  portalLabel,
   adminProfile,
   onExportMasterExcel,
   onOpenProfile,
   onSignOut,
 }: EventsClubsDrawerProps) {
+  const effectiveMode: "student" | "admin" | "it-admin" =
+    portalMode ?? (isAdmin ? "it-admin" : "student");
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -201,7 +209,14 @@ export function EventsClubsDrawer({
     if (onSelectDashboard) {
       onSelectDashboard();
     } else {
-      navigate({ to: isAdmin ? "/admin" : "/" });
+      navigate({
+        to:
+          effectiveMode === "it-admin"
+            ? "/it-admin"
+            : effectiveMode === "admin"
+              ? "/admin"
+              : "/",
+      });
     }
     onClose();
   };
@@ -246,7 +261,11 @@ export function EventsClubsDrawer({
             <GnitsCollegeLogo className="h-10 w-10 flex-shrink-0" />
             <div className="min-w-0">
               <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-tight truncate">
-                {isAdmin ? "Admin Affairs Portal" : "Student Affairs Portal"}
+                {effectiveMode === "it-admin"
+                  ? "IT-Admin Affairs Portal"
+                  : effectiveMode === "admin"
+                    ? "Admin Affairs Portal"
+                    : "Student Affairs Portal"}
               </h3>
               <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
                 Events &amp; Forums Navigation
@@ -397,6 +416,11 @@ export function EventsClubsDrawer({
                                 <div className="flex items-center gap-2.5 min-w-0">
                                   <cat.icon className="h-4 w-4 text-orange-600 flex-shrink-0" />
                                   <span className="truncate">{cat.title}</span>
+                                  {effectiveMode === "admin" && allowedClubSlug === cat.clubSlug && (
+                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-200 flex-shrink-0">
+                                      Editable
+                                    </span>
+                                  )}
                                 </div>
                                 {isCatExpanded ? (
                                   <ChevronDown className="h-4 w-4 text-orange-600 flex-shrink-0" />
@@ -453,8 +477,8 @@ export function EventsClubsDrawer({
           )}
         </div>
 
-        {/* Compact Footer: When Admin, provide signed-in status and admin tools */}
-        {isAdmin ? (
+        {/* Compact Footer: When Admin or IT-Admin, provide signed-in status and tools */}
+        {effectiveMode !== "student" ? (
           <div className="p-3 border-t border-slate-200 bg-slate-50 space-y-2">
             <div className="flex items-center justify-between px-1">
               <div className="flex items-center gap-2 min-w-0">
@@ -462,25 +486,31 @@ export function EventsClubsDrawer({
                   {adminProfile?.avatar_url ? (
                     <img
                       src={adminProfile.avatar_url}
-                      alt="Admin"
+                      alt={portalLabel || "Admin"}
                       className="h-full w-full object-cover"
                     />
+                  ) : effectiveMode === "it-admin" ? (
+                    "IT"
                   ) : (
-                    "SC"
+                    "AD"
                   )}
                 </div>
                 <div className="min-w-0">
                   <span className="text-xs font-bold text-slate-800 block truncate">
-                    {adminProfile?.display_name || "Student Council Admin"}
+                    {adminProfile?.display_name ||
+                      portalLabel ||
+                      (effectiveMode === "it-admin"
+                        ? "IT-Admin (Student Council)"
+                        : "Club Admin")}
                   </span>
                   <span className="text-[10px] text-slate-500 truncate block">
-                    @{adminProfile?.username || "studentcouncil"}
+                    @{adminProfile?.username || (effectiveMode === "it-admin" ? "studentcouncil" : "admin")}
                   </span>
                 </div>
               </div>
 
               <div className="flex items-center gap-1">
-                {onOpenProfile && (
+                {effectiveMode === "it-admin" && onOpenProfile && (
                   <button
                     type="button"
                     onClick={() => {
@@ -488,7 +518,7 @@ export function EventsClubsDrawer({
                       onOpenProfile();
                     }}
                     className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
-                    title="Edit Admin Profile"
+                    title="Edit IT-Admin Profile"
                   >
                     <Settings className="h-3.5 w-3.5" />
                   </button>
@@ -509,7 +539,7 @@ export function EventsClubsDrawer({
               </div>
             </div>
 
-            {onExportMasterExcel && (
+            {effectiveMode === "it-admin" && onExportMasterExcel && (
               <button
                 type="button"
                 onClick={() => {

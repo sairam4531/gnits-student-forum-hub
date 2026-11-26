@@ -16,19 +16,24 @@ import {
 import {
   SESSION_COOKIE_NAME,
   SESSION_DURATION_MS,
+  type PortalRole,
   type SessionPayload,
 } from "@/lib/admin-session.server";
 
-export { SESSION_COOKIE_NAME, SESSION_DURATION_MS, type SessionPayload };
+export { SESSION_COOKIE_NAME, SESSION_DURATION_MS, type PortalRole, type SessionPayload };
 
 export async function verifySession(token: string | undefined): Promise<SessionPayload | null> {
   const { verifySession: serverVerify } = await import("@/lib/admin-session.server");
   return serverVerify(token);
 }
 
-export async function signSession(username: string): Promise<string> {
+export async function signSession(
+  accountOrUsername:
+    | string
+    | Pick<SessionPayload, "username" | "role" | "allowedClubSlug" | "label">,
+): Promise<string> {
   const { signSession: serverSign } = await import("@/lib/admin-session.server");
-  return serverSign(username);
+  return serverSign(accountOrUsername);
 }
 
 export interface AdminEventRecord {
@@ -74,24 +79,22 @@ const memoryAdminProfile: AdminProfileRecord = {
 
 const memoryEvents: AdminEventRecord[] = [];
 
-// 1. Admin Login Server Function
+// 1. Admin / IT-Admin Login Server Function
 export const adminLoginServerFn = createServerFn({ method: "POST" })
   .validator((input) =>
     z
       .object({
         username: z.string().trim().min(1),
         password: z.string().min(1),
+        portal: z.enum(["admin", "it-admin"]).optional(),
       })
       .parse(input),
   )
   .handler(async ({ data }) => {
-    const { ADMIN_USERNAME, ADMIN_PASSWORD } = await import("@/lib/admin-session.server");
-    // Verify temporary administrator credentials only on server
-    if (data.username !== ADMIN_USERNAME || data.password !== ADMIN_PASSWORD) {
-      throw new Error("Invalid username or password. Please verify your credentials.");
-    }
+    const { authenticatePortalCredentials } = await import("@/lib/admin-session.server");
+    const account = authenticatePortalCredentials(data.username, data.password, data.portal);
 
-    const token = await signSession(ADMIN_USERNAME);
+    const token = await signSession(account);
     setCookie(SESSION_COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env["NODE_ENV"] === "production",
@@ -102,17 +105,23 @@ export const adminLoginServerFn = createServerFn({ method: "POST" })
 
     return {
       success: true,
-      username: ADMIN_USERNAME,
+      username: account.username,
+      role: account.role,
+      allowedClubSlug: account.allowedClubSlug,
+      label: account.label,
     };
   });
 
-// 2. Check Admin Session Server Function
+// 2. Check Admin / IT-Admin Session Server Function
 export const getAdminSessionServerFn = createServerFn({ method: "GET" }).handler(async () => {
   const token = getCookie(SESSION_COOKIE_NAME);
   const session = await verifySession(token);
   return {
     authenticated: Boolean(session),
     username: session?.username ?? null,
+    role: session?.role ?? null,
+    allowedClubSlug: session?.allowedClubSlug ?? null,
+    label: session?.label ?? null,
   };
 });
 
@@ -129,6 +138,15 @@ export const getAdminProfileServerFn = createServerFn({ method: "GET" }).handler
   const token = getCookie(SESSION_COOKIE_NAME);
   const session = await verifySession(token);
   if (!session) throw new Error("Unauthorized. Please log in.");
+
+  if (session.role !== "it-admin") {
+    return {
+      username: session.username,
+      display_name: session.label,
+      avatar_url: null,
+      updated_at: new Date().toISOString(),
+    } satisfies AdminProfileRecord;
+  }
 
   try {
     const { supabaseAdmin, hasSupabaseAdminConfig } = await import(
@@ -164,7 +182,7 @@ export const getAdminProfileServerFn = createServerFn({ method: "GET" }).handler
   return memoryAdminProfile;
 });
 
-// 5. Update Admin Profile Server Function
+// 5. Update Admin Profile Server Function (IT-Admin only)
 export const updateAdminProfileServerFn = createServerFn({ method: "POST" })
   .validator((input) =>
     z
@@ -177,7 +195,9 @@ export const updateAdminProfileServerFn = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const token = getCookie(SESSION_COOKIE_NAME);
     const session = await verifySession(token);
-    if (!session) throw new Error("Unauthorized. Please log in.");
+    if (!session || session.role !== "it-admin") {
+      throw new Error("Unauthorized. Only IT-Admin can update this profile.");
+    }
 
     try {
       const { supabaseAdmin, hasSupabaseAdminConfig } = await import(
@@ -339,14 +359,27 @@ export const getAdminForumEventsServerFn = createServerFn({ method: "GET" })
     }
 
     records.sort((a, b) => (b.event_start > a.event_start ? 1 : -1));
+
+    // When a category Admin views another category or IT-Admin institutional events,
+    // display the event metadata and reports/documents/photos without exposing private submitter contacts.
+    if (session.role === "admin" && data.clubSlug !== session.allowedClubSlug) {
+      return records.map((rec) => ({
+        ...rec,
+        submitter_name: null,
+        submitter_email: null,
+      }));
+    }
+
     return records;
   });
 
-// 7. Get All Admin Events (for cross-forum export)
+// 7. Get All Admin Events (for IT-Admin cross-forum export)
 export const getAllAdminEventsServerFn = createServerFn({ method: "GET" }).handler(async () => {
   const token = getCookie(SESSION_COOKIE_NAME);
   const session = await verifySession(token);
-  if (!session) throw new Error("Unauthorized. Admin access required.");
+  if (!session || session.role !== "it-admin") {
+    throw new Error("Unauthorized. IT-Admin access required.");
+  }
 
   const allRecords: AdminEventRecord[] = [];
   const seenIds = new Set<string>();
@@ -386,13 +419,15 @@ export const getAllAdminEventsServerFn = createServerFn({ method: "GET" }).handl
   return allRecords;
 });
 
-// 8. Delete Event as Administrator
+// 8. Delete Event (IT-Admin only)
 export const deleteAdminEventServerFn = createServerFn({ method: "POST" })
   .validator((input: { id: string }) => input)
   .handler(async ({ data }) => {
     const token = getCookie(SESSION_COOKIE_NAME);
     const session = await verifySession(token);
-    if (!session) throw new Error("Unauthorized. Admin access required.");
+    if (!session || session.role !== "it-admin") {
+      throw new Error("Unauthorized. Only IT-Admin can delete events.");
+    }
 
     deleteLocalEvent(data.id);
     const existingEvents = await getEventsStoreAsync({ strictKv: true });

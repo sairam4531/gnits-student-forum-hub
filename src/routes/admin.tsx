@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import {
   ShieldCheck,
@@ -8,37 +8,29 @@ import {
   EyeOff,
   Loader2,
   AlertCircle,
-  X,
+  Menu,
+  LogOut,
+  FolderKanban,
 } from "lucide-react";
-import { AdminProfileModal } from "@/components/AdminProfileModal";
-import { CollegeVideosManage } from "@/components/admin/CollegeVideosManage";
-import { DeanDetailsManage } from "@/components/admin/DeanDetailsManage";
 import { StudentAffairsHeader } from "@/components/StudentAffairsHeader";
 import { EventsClubsDrawer } from "@/components/EventsClubsDrawer";
 import { LoopVideoShowcase } from "@/components/LoopVideoShowcase";
-import { parseInstitutionalForumSlug } from "@/lib/student-forums";
+import { DeanDetailsCard } from "@/components/DeanDetailsCard";
+import { forums, toSlug } from "@/lib/student-forums";
 import {
   adminLoginServerFn,
   getAdminSessionServerFn,
   adminLogoutServerFn,
-  getAdminProfileServerFn,
-  getAllAdminEventsServerFn,
   type AdminProfileRecord,
-  type AdminEventRecord,
 } from "@/lib/admin.functions";
-import {
-  getAdminHomepageDataServerFn,
-} from "@/lib/homepage.functions";
+import { getAdminHomepageDataServerFn } from "@/lib/homepage.functions";
 import type { HomepageDataStore } from "@/lib/local-homepage-store";
 import {
   getClientHomepageData,
   mergeServerWithClient,
-  getClientAdminEvents,
-  getClientEvents,
   HOMEPAGE_KEY,
   DELETED_IDS_KEY,
 } from "@/lib/client-portal-store";
-import * as XLSX from "xlsx";
 
 export const Route = createFileRoute("/admin")({
   staleTime: 0,
@@ -49,6 +41,9 @@ function AdminPage() {
   const navigate = useNavigate();
   const [checkingSession, setCheckingSession] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [allowedClubSlug, setAllowedClubSlug] = useState<string | null>(null);
+  const [roleLabel, setRoleLabel] = useState<string>("Club Admin");
+  const [sessionUsername, setSessionUsername] = useState<string | null>(null);
 
   // Login form state
   const [username, setUsername] = useState("");
@@ -57,14 +52,7 @@ function AdminPage() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
 
-  // Admin Profile state
-  const [adminProfile, setAdminProfile] = useState<AdminProfileRecord | null>(null);
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-
-  // Modal for Edit Video
-  const [isVideosModalOpen, setIsVideosModalOpen] = useState(false);
-
   const [homepageData, setHomepageData] = useState<HomepageDataStore | null>(null);
 
   const loadHomepageData = async () => {
@@ -82,20 +70,18 @@ function AdminPage() {
     }
   };
 
-  // Check initial session & hydrate authoritative homepage data from server
   useEffect(() => {
     async function checkAuth() {
       try {
         const session = await getAdminSessionServerFn();
-        if (session.authenticated) {
+        if (session.authenticated && session.role === "admin") {
           setIsAuthenticated(true);
-          // Fetch profile and latest homepage data before rendering dashboard inputs
-          await Promise.all([
-            getAdminProfileServerFn()
-              .then((profile) => setAdminProfile(profile))
-              .catch(() => {}),
-            loadHomepageData(),
-          ]);
+          setAllowedClubSlug(session.allowedClubSlug);
+          setRoleLabel(session.label || "Club Admin");
+          setSessionUsername(session.username);
+          await loadHomepageData();
+        } else {
+          setIsAuthenticated(false);
         }
       } catch (err) {
         console.warn("Session check note:", err);
@@ -132,7 +118,6 @@ function AdminPage() {
     };
   }, []);
 
-  // Handle Login
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
@@ -143,13 +128,15 @@ function AdminPage() {
         data: {
           username: username.trim(),
           password,
+          portal: "admin",
         },
       });
 
-      if (res.success) {
+      if (res.success && res.role === "admin") {
         setIsAuthenticated(true);
-        const profile = await getAdminProfileServerFn();
-        setAdminProfile(profile);
+        setAllowedClubSlug(res.allowedClubSlug);
+        setRoleLabel(res.label || "Club Admin");
+        setSessionUsername(res.username);
         await loadHomepageData();
       }
     } catch (err: unknown) {
@@ -159,7 +146,6 @@ function AdminPage() {
     }
   };
 
-  // Handle Logout
   const handleLogout = async () => {
     try {
       await adminLogoutServerFn();
@@ -167,97 +153,8 @@ function AdminPage() {
       console.warn("Logout note:", err);
     }
     setIsAuthenticated(false);
-    setAdminProfile(null);
-  };
-
-  // Export Complete Global Portal Master Excel (accessible from sidebar drawer)
-  const handleExportMasterExcel = async () => {
-    try {
-      let serverEvents: AdminEventRecord[] = [];
-      try {
-        serverEvents = (await getAllAdminEventsServerFn()) || [];
-      } catch (err) {
-        console.warn("Could not load server events for excel:", err);
-      }
-
-      const clientAdminEvents = getClientAdminEvents();
-      const clientPublicEvents = getClientEvents();
-
-      const map = new Map<string, AdminEventRecord>();
-      serverEvents.forEach((ev) => map.set(ev.id, ev));
-      clientAdminEvents.forEach((ev) => map.set(ev.id, ev));
-      clientPublicEvents.forEach((pub) => {
-        if (!map.has(pub.id)) {
-          map.set(pub.id, {
-            id: pub.id,
-            club_slug: pub.club_slug,
-            forum_slug: pub.forum_slug,
-            event_name: pub.event_name,
-            event_start: pub.event_start,
-            event_end: pub.event_end,
-            resource_persons: pub.resource_persons || "Not specified",
-            submitter_name: (pub as any).submitter_name || "Student Submitter",
-            submitter_email: (pub as any).submitter_email || "student@gnits.ac.in",
-            report_object_path: (pub as any).report_object_path || "",
-            report_file_name: (pub as any).report_file_name || "Event_Report.pdf",
-            report_content_type: (pub as any).report_content_type || "application/pdf",
-            photo_object_paths: (pub as any).photo_object_paths || [],
-            photo_file_names: (pub as any).photo_file_names || [],
-            created_at: pub.created_at || new Date().toISOString(),
-          });
-        }
-      });
-
-      const allEvents: AdminEventRecord[] = [];
-      const seenSignatures = new Map<string, number>();
-
-      Array.from(map.values()).forEach((ev) => {
-        const sig = `${ev.club_slug}::${ev.forum_slug}::${ev.event_name.trim().toLowerCase()}::${ev.event_start}::${ev.event_end}::${(ev.submitter_email || "").trim().toLowerCase()}`;
-        if (seenSignatures.has(sig)) {
-          const existingIdx = seenSignatures.get(sig)!;
-          const existing = allEvents[existingIdx];
-          if (existing && ev.created_at > existing.created_at) {
-            allEvents[existingIdx] = ev;
-          }
-        } else {
-          seenSignatures.set(sig, allEvents.length);
-          allEvents.push(ev);
-        }
-      });
-
-      if (allEvents.length === 0) {
-        alert("No submitted events available for export.");
-        return;
-      }
-
-      const rows = allEvents.map((ev, i) => ({
-        "S.No": i + 1,
-        "Event ID": ev.id,
-        "Event Name": ev.event_name,
-        "Club Slug": ev.club_slug,
-        "Forum Slug": ev.forum_slug,
-        "Academic Year": parseInstitutionalForumSlug(ev.forum_slug).academicYear || "N/A",
-        "From Date": ev.event_start,
-        "To Date": ev.event_end,
-        "Resource Persons": ev.resource_persons || "N/A",
-        "Submitter Name": ev.submitter_name || "N/A",
-        "Submitter Email": ev.submitter_email || "N/A",
-        "Report File": ev.report_file_name,
-        "Photos Count": ev.photo_file_names?.length || 0,
-        "Submitted At": new Date(ev.created_at).toLocaleString(),
-      }));
-
-      const worksheet = XLSX.utils.json_to_sheet(rows);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "All Forum Events");
-      worksheet["!cols"] = Object.keys(rows[0] || {}).map(() => ({ wch: 25 }));
-      XLSX.writeFile(
-        workbook,
-        `GNITS_Student_Council_Master_Report_${new Date().toISOString().slice(0, 10)}.xlsx`,
-      );
-    } catch (err: unknown) {
-      alert("Failed to export Excel: " + (err instanceof Error ? err.message : "Error"));
-    }
+    setAllowedClubSlug(null);
+    setSessionUsername(null);
   };
 
   if (checkingSession) {
@@ -265,13 +162,12 @@ function AdminPage() {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3 text-muted-foreground">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <span className="text-sm font-semibold">Verifying secure administrator session...</span>
+          <span className="text-sm font-semibold">Verifying Admin session...</span>
         </div>
       </div>
     );
   }
 
-  // If Not Authenticated -> Show Admin Login Form
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex flex-col bg-background text-foreground">
@@ -287,11 +183,11 @@ function AdminPage() {
                 <ShieldCheck className="h-8 w-8" />
               </div>
               <span className="text-xs font-bold uppercase tracking-widest text-primary">
-                Council Administration
+                Forum &amp; Club Administration
               </span>
               <h2 className="text-2xl font-black text-foreground mt-1">Admin Portal Login</h2>
               <p className="text-xs sm:text-sm text-muted-foreground mt-1.5">
-                Sign in with council credentials to review submitted event reports and manage homepage content.
+                Sign in with your category Admin credentials to upload &amp; edit events in your club category and view all portal reports, documents &amp; photos.
               </p>
             </div>
 
@@ -314,7 +210,7 @@ function AdminPage() {
                     required
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    placeholder="Enter admin username"
+                    placeholder="Enter your club admin username"
                     className="w-full rounded-xl border border-input bg-background pl-10 pr-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
@@ -364,10 +260,16 @@ function AdminPage() {
                 </button>
               </div>
             </form>
+
+            <div className="mt-5 pt-4 border-t border-border text-center text-xs text-muted-foreground">
+              <span>Managing Dashboard or Institutional Events? </span>
+              <Link to="/it-admin" className="font-bold text-primary hover:underline">
+                Go to IT-Admin Login
+              </Link>
+            </div>
           </div>
         </div>
 
-        {/* Sidebar Drawer on Login Screen */}
         <EventsClubsDrawer
           isOpen={isDrawerOpen}
           onClose={() => setIsDrawerOpen(false)}
@@ -385,13 +287,13 @@ function AdminPage() {
           onSelectDashboard={() => {
             navigate({ to: "/" });
           }}
-          isAdmin={false}
+          portalMode="student"
         />
       </div>
     );
   }
 
-  // Authenticated Admin Dashboard: ONLY Video Showcase (with Edit Video button) + Dean Details
+  const assignedClub = forums.find((f) => f.slug === allowedClubSlug) || forums[0]!;
   const resolvedData = homepageData ?? getClientHomepageData();
   const currentDean = resolvedData.dean;
   const allVideosList = resolvedData.videos;
@@ -400,75 +302,107 @@ function AdminPage() {
     allVideosList[0] ||
     null;
 
+  const adminProfileSummary: AdminProfileRecord = {
+    username: sessionUsername || "admin",
+    display_name: roleLabel,
+    avatar_url: null,
+    updated_at: new Date().toISOString(),
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-white text-foreground antialiased selection:bg-primary/20">
-      {/* Top Header matching Student Portal with College Logo, Marquee, 28 Years Logo & 3-lines menu */}
       <StudentAffairsHeader
         onOpenDrawer={() => setIsDrawerOpen(true)}
         title="Welcome to Dean Student Affairs Admin Portal"
       />
 
-      {/* Main Admin Dashboard: Video Showcase (with Edit Video button) + Dean Details ONLY */}
       <main className="flex-1 bg-white pb-6">
-        <div className="w-full bg-white">
-          {/* 1. College Dashboard Video Showcase + Edit Video button */}
-          <section
-            aria-label="Campus Loop Video Showcase"
-            className="w-full border-b border-slate-200"
-          >
-            <LoopVideoShowcase
-              video={activeFeaturedVideo}
-              allVideos={allVideosList}
-              onEditVideo={() => setIsVideosModalOpen(true)}
-            />
-          </section>
-
-          {/* 2. Dean Details */}
-          <section
-            id="admin-dean-profile-section"
-            aria-label="Dean Details"
-            className="w-full bg-white py-6 sm:py-8"
-          >
-            <div className="w-full px-4 sm:px-6 lg:px-8">
-              <DeanDetailsManage
-                dean={currentDean}
-                onRefresh={loadHomepageData}
-              />
+        {/* Category Admin Action Bar */}
+        <section className="w-full bg-slate-50 border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-4">
+          <div className="w-full flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="h-11 w-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
+                <FolderKanban className="h-6 w-6" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-primary">
+                    {roleLabel}
+                  </span>
+                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full">
+                    {assignedClub.name}
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-600 mt-1">
+                  Upload and edit events for <strong>{assignedClub.name}</strong> to submit to IT-Admin, or browse reports, documents, and photos across all portal events.
+                </p>
+              </div>
             </div>
-          </section>
-        </div>
+
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  const defaultForum = assignedClub.forums[0]!;
+                  navigate({
+                    to: "/events",
+                    search: {
+                      club: assignedClub.slug,
+                      forum: defaultForum,
+                      slug: toSlug(defaultForum),
+                      mode: "admin",
+                    },
+                  });
+                }}
+                className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs sm:text-sm font-bold text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors cursor-pointer"
+              >
+                <FolderKanban className="h-4 w-4" />
+                <span>Manage {assignedClub.name}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsDrawerOpen(true)}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <Menu className="h-4 w-4" />
+                <span>All Events &amp; Clubs</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-xs sm:text-sm font-bold text-rose-700 hover:bg-rose-100 transition-colors cursor-pointer"
+              >
+                <LogOut className="h-4 w-4" />
+                <span>Sign Out</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* Read-only Homepage Dashboard Preview */}
+        <section
+          aria-label="Campus Loop Video Showcase"
+          className="w-full border-b border-slate-200"
+        >
+          <LoopVideoShowcase
+            video={activeFeaturedVideo}
+            allVideos={allVideosList}
+          />
+        </section>
+
+        <section
+          id="admin-dean-profile-section"
+          aria-label="Dean Details"
+          className="w-full bg-[#f8faff] py-6 sm:py-8"
+        >
+          <div className="w-full px-4 sm:px-6 lg:px-8">
+            <DeanDetailsCard dean={currentDean} />
+          </div>
+        </section>
       </main>
 
-      {/* Admin Profile Modal */}
-      {adminProfile && (
-        <AdminProfileModal
-          profile={adminProfile}
-          isOpen={isProfileModalOpen}
-          onClose={() => setIsProfileModalOpen(false)}
-          onProfileUpdated={(updated) => setAdminProfile(updated)}
-        />
-      )}
-
-      {/* College Videos Management Modal */}
-      {isVideosModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white p-6 sm:p-8 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
-            <button
-              type="button"
-              onClick={() => setIsVideosModalOpen(false)}
-              className="absolute right-5 top-5 p-2 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              <X className="h-5 w-5" />
-            </button>
-            <CollegeVideosManage
-              videos={resolvedData.videos}
-              onRefresh={loadHomepageData}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Slide-out Drawer: Events & Clubs Navigation (with Dashboard at top) */}
       <EventsClubsDrawer
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
@@ -487,21 +421,20 @@ function AdminPage() {
         onSelectDashboard={() => {
           window.scrollTo({ top: 0, behavior: "smooth" });
         }}
-        isAdmin={true}
-        adminProfile={adminProfile}
-        onExportMasterExcel={handleExportMasterExcel}
-        onOpenProfile={() => setIsProfileModalOpen(true)}
+        portalMode="admin"
+        allowedClubSlug={allowedClubSlug}
+        portalLabel={roleLabel}
+        adminProfile={adminProfileSummary}
         onSignOut={handleLogout}
       />
 
-      {/* Footer */}
       <footer className="border-t border-border/80 bg-card/60 py-6">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center text-xs text-muted-foreground">
           <p className="font-semibold text-foreground">
-            GNITS Student Council • Administrative Control Panel
+            GNITS Student Council • Admin Portal ({roleLabel})
           </p>
           <p className="text-[11px] mt-1">
-            Protected with HTTP-only encrypted session cookies and server-verified data boundaries.
+            Protected with HTTP-only encrypted session cookies and scoped event category permissions.
           </p>
         </div>
       </footer>

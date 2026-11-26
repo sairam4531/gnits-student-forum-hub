@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { Route as AdminRoute } from "@/routes/admin";
+import { Route as ItAdminRoute } from "@/routes/it-admin";
 import { getAdminSessionServerFn } from "@/lib/admin.functions";
 
 class MockResizeObserver {
@@ -22,13 +23,17 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/lib/admin.functions", () => ({
   adminLoginServerFn: vi.fn(),
-  getAdminSessionServerFn: vi
-    .fn()
-    .mockResolvedValue({ authenticated: true, username: "studentcouncil" }),
+  getAdminSessionServerFn: vi.fn().mockResolvedValue({
+    authenticated: true,
+    username: "studentcouncil",
+    role: "it-admin",
+    allowedClubSlug: null,
+    label: "IT-Admin",
+  }),
   adminLogoutServerFn: vi.fn().mockResolvedValue({ success: true }),
   getAdminProfileServerFn: vi.fn().mockResolvedValue({
     username: "studentcouncil",
-    display_name: "GNITS Student Council Admin",
+    display_name: "GNITS Student Council IT-Admin",
     avatar_url: null,
     updated_at: "2026-11-25T00:00:00.000Z",
   }),
@@ -56,16 +61,17 @@ vi.mock("@/lib/homepage.functions", () => ({
   updateDeanDetailsAdminServerFn: vi.fn().mockResolvedValue({ success: true }),
 }));
 
-describe("Admin Dashboard Simplified Layout", () => {
+describe("IT-Admin & Admin Portal Dashboards", () => {
   afterEach(() => {
     cleanup();
   });
 
-  it("displays ONLY video showcase with Edit Video button and Dean Details, with no filters, data tables, or extra buttons", async () => {
-    const AdminComponent = (AdminRoute as unknown as { options: { component: React.ComponentType } })
-      .options.component;
+  it("displays IT-Admin dashboard with Edit Video and Dean Details, with no filters or extra tables", async () => {
+    const ItAdminComponent = (ItAdminRoute as unknown as {
+      options: { component: React.ComponentType };
+    }).options.component;
 
-    render(<AdminComponent />);
+    render(<ItAdminComponent />);
 
     // Wait for session verification and dashboard render
     const editVideoBtn = await screen.findByRole("button", { name: /edit video/i });
@@ -92,21 +98,66 @@ describe("Admin Dashboard Simplified Layout", () => {
     });
   });
 
-  it("does not display or auto-fill admin credentials on the login page", async () => {
+  it("displays category-scoped Admin dashboard on /admin with read-only showcase and club manage link", async () => {
     vi.mocked(getAdminSessionServerFn).mockResolvedValueOnce({
-      authenticated: false,
-      username: null,
+      authenticated: true,
+      username: "gnitstechnical",
+      role: "admin",
+      allowedClubSlug: "technical-events",
+      label: "Technical Events Admin",
     });
 
-    const AdminComponent = (AdminRoute as unknown as { options: { component: React.ComponentType } })
-      .options.component;
+    const AdminComponent = (AdminRoute as unknown as {
+      options: { component: React.ComponentType };
+    }).options.component;
 
     render(<AdminComponent />);
 
-    expect(await screen.findByRole("button", { name: /sign in as admin/i })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: /manage technical clubs/i })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /^dean details$/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /edit video/i })).toBeNull();
+  });
+
+  it("does not display or auto-fill credentials on /it-admin or /admin login pages", async () => {
+    vi.mocked(getAdminSessionServerFn).mockResolvedValueOnce({
+      authenticated: false,
+      username: null,
+      role: null,
+      allowedClubSlug: null,
+      label: null,
+    });
+
+    const ItAdminComponent = (ItAdminRoute as unknown as {
+      options: { component: React.ComponentType };
+    }).options.component;
+
+    render(<ItAdminComponent />);
+
+    expect(await screen.findByRole("button", { name: /sign in as it-admin/i })).toBeTruthy();
     expect(screen.queryByText(/auto-fill demo credentials/i)).toBeNull();
     expect(screen.queryByText(/default credentials/i)).toBeNull();
     expect(screen.queryByText(/studentcouncil@1234/i)).toBeNull();
     expect(screen.queryByPlaceholderText("studentcouncil")).toBeNull();
+
+    cleanup();
+
+    vi.mocked(getAdminSessionServerFn).mockResolvedValueOnce({
+      authenticated: false,
+      username: null,
+      role: null,
+      allowedClubSlug: null,
+      label: null,
+    });
+
+    const AdminComponent = (AdminRoute as unknown as {
+      options: { component: React.ComponentType };
+    }).options.component;
+
+    render(<AdminComponent />);
+
+    expect(await screen.findByRole("button", { name: /sign in as admin/i })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /go to it-admin login/i })).toBeTruthy();
+    expect(screen.queryByText(/gnitstechnical@1234/i)).toBeNull();
+    expect(screen.queryByPlaceholderText("gnitstechnical")).toBeNull();
   });
 });

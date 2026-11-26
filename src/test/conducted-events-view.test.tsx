@@ -118,7 +118,9 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
 
       expect(screen.getByText("sedger")).toBeTruthy();
       expect(screen.getByText("Tha")).toBeTruthy();
-      expect(screen.getAllByRole("button", { name: /^edit$/i }).length).toBe(2);
+      expect(screen.queryByRole("button", { name: /add new event/i })).toBeNull();
+      expect(screen.queryByRole("button", { name: /^edit$/i })).toBeNull();
+      expect(screen.queryByRole("button", { name: /delete/i })).toBeNull();
       expect(mockGetPublicForumEvents).toHaveBeenCalledTimes(1);
       // Hydrating server results must NOT emit cross-tab sync broadcasts
       expect(postMessages.length).toBe(0);
@@ -168,7 +170,7 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
   });
 
   it("navigates directly on non-Student-Forum sidebar events without rendering AY items in the drawer while keeping Student Forums untouched", async () => {
-    for (const isAdmin of [false, true]) {
+    for (const portalMode of ["student", "admin", "it-admin"] as const) {
       const onSelectForum = vi.fn();
       const onClose = vi.fn();
       renderWithRouter(
@@ -176,9 +178,20 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
           isOpen={true}
           onClose={onClose}
           onSelectForum={onSelectForum}
-          isAdmin={isAdmin}
+          portalMode={portalMode}
+          allowedClubSlug={portalMode === "admin" ? "technical-events" : null}
         />,
       );
+
+      expect(
+        screen.getByText(
+          portalMode === "it-admin"
+            ? "IT-Admin Affairs Portal"
+            : portalMode === "admin"
+              ? "Admin Affairs Portal"
+              : "Student Affairs Portal",
+        ),
+      ).toBeTruthy();
 
       // Click an institutional event ("Annual day") — navigates directly with no AY list in sidebar
       fireEvent.click(await screen.findByRole("button", { name: /annual day/i }));
@@ -208,23 +221,26 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
     }
   });
 
-  it("omits resource person and submitter fields when adding institutional events, while preserving them for Student Forums", async () => {
-    mockGetPublicForumEvents.mockResolvedValue([]);
+  it("omits resource person and submitter fields when adding institutional events in AdminEventsView, while preserving them for Student Forums", async () => {
+    mockGetAdminForumEventsServerFn.mockResolvedValue([]);
 
-    // 1. Institutional Event: no resource person, submitter name, or mail id
+    // 1. Institutional Event (IT-Admin): no resource person, submitter name, or mail id
     const instClub = forums.find((f) => f.slug === "institutional-events")!;
     render(
-      <ConductedEventsView
+      <AdminEventsView
         club={instClub}
         forumName="Annual day"
         forumSlug="annual-day--ay-2024-25"
         academicYear="AY:2024-25"
-        isAdmin={false}
+        portalRole="it-admin"
+        canAdd={true}
+        canEdit={true}
+        canDelete={true}
       />,
     );
 
-    const addInstBtn = await screen.findByRole("button", { name: /add new event on annual day/i });
-    fireEvent.click(addInstBtn);
+    const addInstBtns = await screen.findAllByRole("button", { name: /add new event on annual day/i });
+    fireEvent.click(addInstBtns[0]!);
 
     expect(screen.queryByText(/resource person names/i)).toBeNull();
     expect(screen.queryByText(/submitter name/i)).toBeNull();
@@ -233,19 +249,22 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
 
     cleanup();
 
-    // 2. Student Forum (ISTE): keeps all original fields untouched
+    // 2. Student Forum (Category Admin on Technical Events / ISTE): keeps all original fields
     const techClub = forums[0]!;
     render(
-      <ConductedEventsView
+      <AdminEventsView
         club={techClub}
         forumName="ISTE"
         forumSlug="iste"
-        isAdmin={false}
+        portalRole="admin"
+        canAdd={true}
+        canEdit={true}
+        canDelete={false}
       />,
     );
 
-    const addForumBtn = await screen.findByRole("button", { name: /add new event on iste/i });
-    fireEvent.click(addForumBtn);
+    const addForumBtns = await screen.findAllByRole("button", { name: /add new event on iste/i });
+    fireEvent.click(addForumBtns[0]!);
 
     expect(screen.getByText(/resource person names/i)).toBeTruthy();
     expect(screen.getByText(/submitter name/i)).toBeTruthy();
@@ -295,7 +314,7 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
     expect(screen.getByRole("button", { name: /delete event/i })).toBeTruthy();
   });
 
-  it("immediately shows newly added Institutional and Student Forum events even if KV read returns stale empty array after submit", async () => {
+  it("immediately shows newly added Institutional and Student Forum events in AdminEventsView even if KV read returns stale empty array after submit", async () => {
     if (typeof URL.createObjectURL !== "function") {
       Object.defineProperty(URL, "createObjectURL", {
         configurable: true,
@@ -308,8 +327,8 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
     const techClub = forums[0]!;
     const pdfFile = new File(["%PDF-1.4\ntest"], "event-report.pdf", { type: "application/pdf" });
 
-    // Case 1: Institutional Event (Annual day, AY:2023-24)
-    mockGetPublicForumEvents.mockResolvedValue([]);
+    // Case 1: Institutional Event (IT-Admin: Add, Edit, Delete)
+    mockGetAdminForumEventsServerFn.mockResolvedValue([]);
     mockSubmitStudentEvent.mockResolvedValue({
       id: "inst-new-2023",
       success: true,
@@ -317,37 +336,47 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
     });
 
     const { container: instContainer } = render(
-      <ConductedEventsView
+      <AdminEventsView
         club={instClub}
         forumName="Annual day"
         forumSlug="annual-day--ay-2023-24"
         academicYear="AY:2023-24"
-        isAdmin={false}
+        portalRole="it-admin"
+        canAdd={true}
+        canEdit={true}
+        canDelete={true}
       />,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: /add new event on annual day/i }));
+    const instAddBtns = await screen.findAllByRole("button", {
+      name: /add new event on annual day/i,
+    });
+    fireEvent.click(instAddBtns[0]!);
     fireEvent.change(screen.getByPlaceholderText(/national level hackathon/i), {
       target: { value: "Annual Day Celebration 2024" },
     });
     const instDateInputs = instContainer.querySelectorAll('input[type="date"]');
     fireEvent.change(instDateInputs[0]!, { target: { value: "2024-03-15" } });
     fireEvent.change(instDateInputs[1]!, { target: { value: "2024-03-16" } });
-    const instReportInput = instContainer.querySelector('input[type="file"][accept*=".pdf"]')!;
+    const instReportInput = instContainer.querySelector(
+      'input[type="file"]:not([multiple])[accept*=".pdf"]',
+    )!;
     fireEvent.change(instReportInput, { target: { files: [pdfFile] } });
 
-    fireEvent.submit(screen.getByRole("button", { name: /submit to admin/i }).closest("form")!);
+    fireEvent.submit(screen.getByRole("button", { name: /submit to portal/i }).closest("form")!);
 
-    expect(await screen.findByText(/event submitted to admin successfully!/i)).toBeTruthy();
+    expect(await screen.findByText(/event submitted to portal successfully!/i)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /done/i }));
     expect(await screen.findByText("Annual Day Celebration 2024")).toBeTruthy();
-    expect(screen.queryByText(/no conducted events posted yet/i)).toBeNull();
+    expect(screen.queryByText(/no events uploaded for annual day yet/i)).toBeNull();
+    expect(screen.getByRole("button", { name: /^edit$/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /delete event/i })).toBeTruthy();
 
     cleanup();
     localStorage.clear();
 
-    // Case 2: Student Forum (ISTE) with resource person & submitter details
-    mockGetPublicForumEvents.mockResolvedValue([]);
+    // Case 2: Student Forum (Category Admin: Add & Edit to IT-Admin, NO Delete)
+    mockGetAdminForumEventsServerFn.mockResolvedValue([]);
     mockSubmitStudentEvent.mockResolvedValue({
       id: "iste-new-2026",
       success: true,
@@ -355,15 +384,19 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
     });
 
     const { container: forumContainer } = render(
-      <ConductedEventsView
+      <AdminEventsView
         club={techClub}
         forumName="ISTE"
         forumSlug="iste"
-        isAdmin={false}
+        portalRole="admin"
+        canAdd={true}
+        canEdit={true}
+        canDelete={false}
       />,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: /add new event on iste/i }));
+    const forumAddBtns = await screen.findAllByRole("button", { name: /add new event on iste/i });
+    fireEvent.click(forumAddBtns[0]!);
     fireEvent.change(screen.getByPlaceholderText(/national level hackathon/i), {
       target: { value: "ISTE AI Workshop" },
     });
@@ -379,17 +412,21 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
     fireEvent.change(screen.getByPlaceholderText(/gnits\.ac\.in/i), {
       target: { value: "ananya@gnits.ac.in" },
     });
-    const forumReportInput = forumContainer.querySelector('input[type="file"][accept*=".pdf"]')!;
+    const forumReportInput = forumContainer.querySelector(
+      'input[type="file"]:not([multiple])[accept*=".pdf"]',
+    )!;
     fireEvent.change(forumReportInput, { target: { files: [pdfFile] } });
 
-    fireEvent.submit(screen.getByRole("button", { name: /submit to admin/i }).closest("form")!);
+    fireEvent.submit(screen.getByRole("button", { name: /submit to it-admin/i }).closest("form")!);
 
-    expect(await screen.findByText(/event submitted to admin successfully!/i)).toBeTruthy();
+    expect(await screen.findByText(/event submitted to it-admin successfully!/i)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /done/i }));
     expect(await screen.findByText("ISTE AI Workshop")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^edit$/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /delete event/i })).toBeNull();
   });
 
-  it("supports uploading PDF and Word Documents across all events (institutional and student forums) and displays them in AdminEventsView", async () => {
+  it("supports uploading PDF and Word Documents across all events (institutional and student forums) and displays read-only files to other admins", async () => {
     if (typeof URL.createObjectURL !== "function") {
       Object.defineProperty(URL, "createObjectURL", {
         configurable: true,
@@ -409,7 +446,7 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
       { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
     );
 
-    mockGetPublicForumEvents.mockResolvedValue([]);
+    mockGetAdminForumEventsServerFn.mockResolvedValue([]);
     mockSubmitStudentEvent.mockResolvedValue({
       id: "iste-with-docs-1",
       success: true,
@@ -417,15 +454,19 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
     });
 
     const { container } = render(
-      <ConductedEventsView
+      <AdminEventsView
         club={techClub}
         forumName="ISTE"
         forumSlug="iste"
-        isAdmin={false}
+        portalRole="admin"
+        canAdd={true}
+        canEdit={true}
+        canDelete={false}
       />,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: /add new event on iste/i }));
+    const addBtns = await screen.findAllByRole("button", { name: /add new event on iste/i });
+    fireEvent.click(addBtns[0]!);
     expect(screen.getByText(/documents \(pdf \/ word\)/i)).toBeTruthy();
 
     fireEvent.change(screen.getByPlaceholderText(/national level hackathon/i), {
@@ -453,9 +494,9 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
     expect(screen.getByText("Circular.pdf")).toBeTruthy();
     expect(screen.getByText("Attendance.docx")).toBeTruthy();
 
-    fireEvent.submit(screen.getByRole("button", { name: /submit to admin/i }).closest("form")!);
+    fireEvent.submit(screen.getByRole("button", { name: /submit to it-admin/i }).closest("form")!);
 
-    expect(await screen.findByText(/event submitted to admin successfully!/i)).toBeTruthy();
+    expect(await screen.findByText(/event submitted to it-admin successfully!/i)).toBeTruthy();
     expect(mockSubmitStudentEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -470,6 +511,7 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
     );
 
     cleanup();
+    localStorage.clear();
 
     mockGetAdminForumEventsServerFn.mockResolvedValue([
       {
@@ -480,8 +522,8 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
         event_start: "2026-10-05",
         event_end: "2026-10-06",
         resource_persons: "Dr. M. Rao",
-        submitter_name: "Sneha",
-        submitter_email: "sneha@gnits.ac.in",
+        submitter_name: null,
+        submitter_email: null,
         report_object_path: "submissions/iste-with-docs-1/report.pdf",
         report_file_name: "main-report.pdf",
         report_content_type: "application/pdf",
@@ -506,10 +548,23 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
       },
     ]);
 
-    render(<AdminEventsView club={techClub} forumName="ISTE" forumSlug="iste" />);
+    render(
+      <AdminEventsView
+        club={techClub}
+        forumName="ISTE"
+        forumSlug="iste"
+        portalRole="admin"
+        canAdd={false}
+        canEdit={false}
+        canDelete={false}
+      />,
+    );
     expect(await screen.findByText("ISTE Cloud Seminar")).toBeTruthy();
     expect(screen.getByText(/documents \(2\)/i)).toBeTruthy();
     expect(screen.getByText("Circular.pdf")).toBeTruthy();
     expect(screen.getByText("Attendance.docx")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /add new event/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^edit$/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /delete event/i })).toBeNull();
   });
 });

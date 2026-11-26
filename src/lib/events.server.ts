@@ -109,6 +109,13 @@ export async function processStudentEventSubmission(
     existingRemoteRow = Boolean(existingRow);
   }
 
+  const session = await verifySession(adminSessionToken);
+  if (session?.role === "admin" && data.clubSlug !== session.allowedClubSlug) {
+    throw new Error(
+      "Unauthorized: Your Admin login only permits adding or editing events in your assigned club category.",
+    );
+  }
+
   const isUpdate = existingRemoteRow || Boolean(existingStoreEvent);
   let issuedEditToken: string | undefined;
   let nextEditTokenHash = existingStoreEvent?.edit_token_hash;
@@ -118,7 +125,6 @@ export async function processStudentEventSubmission(
   const normalizedSubmitterEmail = data.submitterEmail?.trim().toLowerCase() || null;
 
   if (isUpdate) {
-    const session = await verifySession(adminSessionToken);
     let authorized = Boolean(session);
 
     if (!authorized && data.editToken && existingStoreEvent?.edit_token_hash) {
@@ -203,7 +209,7 @@ export async function processStudentEventSubmission(
 
   const photoDownloadUrls: string[] = keepExistingPhotos
     ? existingStoreEvent?.photo_download_urls ||
-      finalPhotoObjectPaths.map((p) => buildEventFileDownloadUrl(p))
+    finalPhotoObjectPaths.map((p) => buildEventFileDownloadUrl(p))
     : [];
 
   if (!keepExistingPhotos) {
@@ -254,7 +260,7 @@ export async function processStudentEventSubmission(
 
   const docDownloadUrls: string[] = keepExistingDocs
     ? existingStoreEvent?.document_download_urls ||
-      finalDocObjectPaths.map((d) => buildEventFileDownloadUrl(d))
+    finalDocObjectPaths.map((d) => buildEventFileDownloadUrl(d))
     : [];
 
   if (!keepExistingDocs) {
@@ -404,11 +410,11 @@ export async function processStudentEventSubmission(
     photo_file_names: finalPhotoFileNames,
     ...(finalDocObjectPaths.length > 0
       ? {
-          document_object_paths: finalDocObjectPaths,
-          document_file_names: finalDocFileNames,
-          document_content_types: finalDocContentTypes,
-          document_download_urls: docDownloadUrls,
-        }
+        document_object_paths: finalDocObjectPaths,
+        document_file_names: finalDocFileNames,
+        document_content_types: finalDocContentTypes,
+        document_download_urls: docDownloadUrls,
+      }
       : {}),
     created_at: existingStoreEvent?.created_at || new Date().toISOString(),
     updated_at: isUpdate ? new Date().toISOString() : undefined,

@@ -341,10 +341,18 @@ describe("App routing", () => {
       forum: "Annual day",
       slug: scopedSlug,
       ay: "AY:2024-25",
-      mode: "admin",
+      mode: "it-admin",
     });
     expect(instSearch.ay).toBe("AY:2024-25");
-    expect(instSearch.mode).toBe("admin");
+    expect(instSearch.mode).toBe("it-admin");
+
+    const clubAdminSearch = validateSearch({
+      club: "technical-events",
+      forum: "ISTE",
+      slug: "iste",
+      mode: "admin",
+    });
+    expect(clubAdminSearch.mode).toBe("admin");
 
     const studentForumSearch = validateSearch({
       club: "technical-events",
@@ -353,5 +361,6 @@ describe("App routing", () => {
       ay: "AY:2024-25",
     });
     expect(studentForumSearch.ay).toBeUndefined();
+    expect(studentForumSearch.mode).toBeUndefined();
   });
 });

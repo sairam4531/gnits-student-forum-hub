@@ -186,7 +186,15 @@ export const getPublicForumEvents = createServerFn({ method: "GET" })
 export const submitStudentEvent = createServerFn({ method: "POST" })
   .validator((input) => eventSubmissionSchema.parse(input))
   .handler(async ({ data }) => {
-    const { processStudentEventSubmission } = await import("@/lib/events.server");
+    const { verifySession } = await import("@/lib/admin.functions");
     const token = getCookie(SESSION_COOKIE_NAME);
+    const session = await verifySession(token);
+    if (!session) {
+      throw new Error("Unauthorized. Please log in to Admin or IT-Admin to submit events.");
+    }
+    if (session.role === "admin" && data.clubSlug !== session.allowedClubSlug) {
+      throw new Error("Unauthorized. Your login only permits adding or editing events in your assigned club category.");
+    }
+    const { processStudentEventSubmission } = await import("@/lib/events.server");
     return processStudentEventSubmission(data, token);
   });

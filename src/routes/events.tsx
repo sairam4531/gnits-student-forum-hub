@@ -3,6 +3,9 @@ import { useState, useEffect } from "react";
 import {
   ArrowLeft,
   Home,
+  Lock,
+  ShieldCheck,
+  Loader2,
 } from "lucide-react";
 import { StudentAffairsHeader } from "@/components/StudentAffairsHeader";
 import { ConductedEventsView } from "@/components/ConductedEventsView";
@@ -37,7 +40,7 @@ interface EventSearchState {
   forum?: string | undefined;
   slug?: string | undefined;
   ay?: string | undefined;
-  mode?: "admin" | undefined;
+  mode?: "admin" | "it-admin" | undefined;
 }
 
 export const Route = createFileRoute("/events")({
@@ -52,7 +55,12 @@ export const Route = createFileRoute("/events")({
       forum: (search["forum"] as string) || "ISTE",
       slug: (search["slug"] as string) || "iste",
       ay,
-      mode: search["mode"] === "admin" ? "admin" : undefined,
+      mode:
+        search["mode"] === "it-admin"
+          ? "it-admin"
+          : search["mode"] === "admin"
+            ? "admin"
+            : undefined,
     };
   },
   component: DedicatedEventPage,
@@ -65,8 +73,11 @@ function DedicatedEventPage() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [recentEvents, setRecentEvents] = useState<PublicEventRecord[]>([]);
 
-  // Admin authentication state (only activated when opened explicitly from Admin Portal)
-  const [isAdmin, setIsAdmin] = useState(false);
+  // Privileged portal authentication state (?mode=admin or ?mode=it-admin)
+  const [checkingAuth, setCheckingAuth] = useState(false);
+  const [sessionRole, setSessionRole] = useState<"admin" | "it-admin" | null>(null);
+  const [allowedClubSlug, setAllowedClubSlug] = useState<string | null>(null);
+  const [roleLabel, setRoleLabel] = useState<string | null>(null);
   const [adminProfile, setAdminProfile] = useState<AdminProfileRecord | null>(null);
 
   const clubSlug = search.club || "technical-events";
@@ -82,47 +93,79 @@ function DedicatedEventPage() {
       ? institutionalForumSlugWithAy(parsedSlug.baseSlug, selectedAy)
       : parsedSlug.baseSlug
     : rawSlug;
+  const wantsItAdminView = search.mode === "it-admin";
   const wantsAdminView = search.mode === "admin";
+  const wantsPrivilegedView = wantsItAdminView || wantsAdminView;
+  const isItAdmin = wantsItAdminView && sessionRole === "it-admin";
+  const isClubAdmin = wantsAdminView && sessionRole === "admin";
+  const isPrivileged = isItAdmin || isClubAdmin;
+  const portalMode: "student" | "admin" | "it-admin" = isItAdmin
+    ? "it-admin"
+    : isClubAdmin
+      ? "admin"
+      : "student";
 
   // Match the club or fallback to default
   const selectedClub: ForumClub =
     forums.find((c) => c.slug === clubSlug) || forums[0]!;
 
-  // Check admin session only when navigated from Admin Portal (?mode=admin)
+  // Verify privileged session when navigated in ?mode=admin or ?mode=it-admin
   useEffect(() => {
-    if (!wantsAdminView) {
-      setIsAdmin(false);
+    if (!wantsPrivilegedView) {
+      setCheckingAuth(false);
+      setSessionRole(null);
+      setAllowedClubSlug(null);
+      setRoleLabel(null);
       setAdminProfile(null);
       return;
     }
 
     let cancelled = false;
-    async function verifyAdminMode() {
+    setCheckingAuth(true);
+
+    async function verifyPortalMode() {
       try {
         const session = await getAdminSessionServerFn();
-        if (!cancelled && session.authenticated) {
-          setIsAdmin(true);
+        if (cancelled) return;
+
+        if (wantsItAdminView && session.authenticated && session.role === "it-admin") {
+          setSessionRole("it-admin");
+          setAllowedClubSlug(null);
+          setRoleLabel(session.label || "IT-Admin");
           const profile = await getAdminProfileServerFn();
           if (!cancelled) {
             setAdminProfile(profile);
           }
-        } else if (!cancelled) {
-          setIsAdmin(false);
+        } else if (wantsAdminView && session.authenticated && session.role === "admin") {
+          setSessionRole("admin");
+          setAllowedClubSlug(session.allowedClubSlug);
+          setRoleLabel(session.label || "Club Admin");
+          setAdminProfile(null);
+        } else {
+          setSessionRole(null);
+          setAllowedClubSlug(null);
+          setRoleLabel(null);
           setAdminProfile(null);
         }
       } catch {
         if (!cancelled) {
-          setIsAdmin(false);
+          setSessionRole(null);
+          setAllowedClubSlug(null);
+          setRoleLabel(null);
           setAdminProfile(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setCheckingAuth(false);
         }
       }
     }
 
-    verifyAdminMode();
+    verifyPortalMode();
     return () => {
       cancelled = true;
     };
-  }, [wantsAdminView]);
+  }, [wantsPrivilegedView, wantsItAdminView, wantsAdminView]);
 
   // Load recent events for drawer navigation
   useEffect(() => {
@@ -155,7 +198,11 @@ function DedicatedEventPage() {
         forum: newForumName,
         slug: newForumSlug,
         ...(academicYear ? { ay: academicYear } : {}),
-        ...(isAdmin ? { mode: "admin" as const } : {}),
+        ...(isItAdmin
+          ? { mode: "it-admin" as const }
+          : isClubAdmin
+            ? { mode: "admin" as const }
+            : {}),
       },
     });
   };
@@ -168,7 +215,11 @@ function DedicatedEventPage() {
         forum: forumName,
         slug: institutionalForumSlugWithAy(parsedSlug.baseSlug, ay),
         ay,
-        ...(isAdmin ? { mode: "admin" as const } : {}),
+        ...(isItAdmin
+          ? { mode: "it-admin" as const }
+          : isClubAdmin
+            ? { mode: "admin" as const }
+            : {}),
       },
     });
   };
@@ -218,9 +269,11 @@ function DedicatedEventPage() {
       <StudentAffairsHeader
         onOpenDrawer={() => setIsDrawerOpen(true)}
         title={
-          isAdmin
-            ? "Welcome to Dean Student Affairs Admin Portal"
-            : undefined
+          isItAdmin
+            ? "Welcome to Dean Student Affairs IT-Admin Portal"
+            : isClubAdmin
+              ? "Welcome to Dean Student Affairs Admin Portal"
+              : undefined
         }
       />
 
@@ -228,12 +281,20 @@ function DedicatedEventPage() {
       <div className="bg-white border-b border-slate-200 shadow-2xs sticky top-18 sm:top-20 z-30">
         <div className="w-full px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm font-semibold text-slate-600 truncate">
-            {isAdmin ? (
+            {isItAdmin ? (
               <Link
-                to="/admin"
+                to="/it-admin"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-50 hover:bg-orange-100 text-orange-800 font-bold border border-orange-200 transition-colors cursor-pointer flex-shrink-0"
               >
                 <ArrowLeft className="h-3.5 w-3.5 text-orange-600" />
+                <span>Back to IT-Admin Dashboard</span>
+              </Link>
+            ) : isClubAdmin ? (
+              <Link
+                to="/admin"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold border border-blue-200 transition-colors cursor-pointer flex-shrink-0"
+              >
+                <ArrowLeft className="h-3.5 w-3.5 text-blue-600" />
                 <span>Back to Admin Dashboard</span>
               </Link>
             ) : (
@@ -274,7 +335,7 @@ function DedicatedEventPage() {
       <main className="flex-1 w-full bg-white">
         <div className="w-full px-4 sm:px-6 py-4">
           <div className="w-full animate-in fade-in duration-200">
-            {isInstitutional && (
+            {isInstitutional && (!wantsPrivilegedView || isPrivileged) && (
               <div className="mb-4 pb-3 border-b border-slate-200">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div>
@@ -308,7 +369,41 @@ function DedicatedEventPage() {
               </div>
             )}
 
-            {isInstitutional && !selectedAy ? (
+            {checkingAuth ? (
+              <div className="py-12 flex flex-col items-center justify-center gap-3 text-slate-500">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <p className="text-sm font-medium">Verifying portal session...</p>
+              </div>
+            ) : wantsPrivilegedView && !isPrivileged ? (
+              <div className="py-12 px-4 text-center max-w-md mx-auto space-y-4">
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
+                  <Lock className="h-7 w-7" />
+                </div>
+                <h2 className="text-xl font-black text-slate-900">
+                  {wantsItAdminView ? "IT-Admin Sign In Required" : "Admin Sign In Required"}
+                </h2>
+                <p className="text-sm text-slate-600">
+                  {wantsItAdminView
+                    ? "Please sign in via the IT-Admin portal to manage institutional events and review student forum submissions."
+                    : "Please sign in with your category Admin credentials to manage events and view submitted files."}
+                </p>
+                <div className="flex items-center justify-center gap-3 pt-2">
+                  <Link
+                    to={wantsItAdminView ? "/it-admin" : "/admin"}
+                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors"
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    <span>{wantsItAdminView ? "Go to IT-Admin Login" : "Go to Admin Login"}</span>
+                  </Link>
+                  <Link
+                    to="/"
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    <span>Student Portal</span>
+                  </Link>
+                </div>
+              </div>
+            ) : isInstitutional && !selectedAy ? (
               <div className="py-6 text-center space-y-4">
                 <p className="text-sm font-semibold text-slate-600">
                   Please choose an Academic Year above to view or manage {forumName} events.
@@ -326,12 +421,27 @@ function DedicatedEventPage() {
                   ))}
                 </div>
               </div>
-            ) : isAdmin ? (
+            ) : isItAdmin ? (
               <AdminEventsView
                 club={selectedClub}
                 forumName={forumName}
                 forumSlug={forumSlug}
                 academicYear={selectedAy}
+                portalRole="it-admin"
+                canAdd={isInstitutional}
+                canEdit={isInstitutional}
+                canDelete={true}
+              />
+            ) : isClubAdmin ? (
+              <AdminEventsView
+                club={selectedClub}
+                forumName={forumName}
+                forumSlug={forumSlug}
+                academicYear={selectedAy}
+                portalRole="admin"
+                canAdd={Boolean(allowedClubSlug && selectedClub.slug === allowedClubSlug && !isInstitutional)}
+                canEdit={Boolean(allowedClubSlug && selectedClub.slug === allowedClubSlug && !isInstitutional)}
+                canDelete={false}
               />
             ) : (
               <ConductedEventsView
@@ -339,7 +449,6 @@ function DedicatedEventPage() {
                 forumName={forumName}
                 forumSlug={forumSlug}
                 academicYear={selectedAy}
-                isAdmin={false}
               />
             )}
           </div>
@@ -353,11 +462,13 @@ function DedicatedEventPage() {
         onSelectForum={handleSelectForum}
         onOpenSubmitModal={handleSelectForum}
         onSelectDashboard={() => {
-          navigate({ to: isAdmin ? "/admin" : "/" });
+          navigate({ to: isItAdmin ? "/it-admin" : isClubAdmin ? "/admin" : "/" });
         }}
-        isAdmin={isAdmin}
-        adminProfile={adminProfile}
-        onExportMasterExcel={handleExportMasterExcel}
+        portalMode={portalMode}
+        allowedClubSlug={allowedClubSlug}
+        {...(roleLabel ? { portalLabel: roleLabel } : {})}
+        isAdmin={isItAdmin}
+        {...(isItAdmin ? { adminProfile, onExportMasterExcel: handleExportMasterExcel } : {})}
         recentEvents={recentEvents}
       />
 

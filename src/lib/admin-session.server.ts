@@ -4,12 +4,109 @@
 export const SESSION_COOKIE_NAME = "gnits_admin_session";
 export const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+export type PortalRole = "it-admin" | "admin";
+
+export interface AdminAccountConfig {
+  username: string;
+  password: string;
+  role: PortalRole;
+  allowedClubSlug: string | null;
+  label: string;
+}
+
 export const ADMIN_USERNAME = "studentcouncil";
 export const ADMIN_PASSWORD = "studentcouncil@1234";
 
+const PORTAL_ACCOUNTS: readonly AdminAccountConfig[] = [
+  {
+    username: ADMIN_USERNAME,
+    password: ADMIN_PASSWORD,
+    role: "it-admin",
+    allowedClubSlug: null,
+    label: "IT-Admin (Student Council)",
+  },
+  {
+    username: "gnitstechnical",
+    password: "gnitstechnical@1234",
+    role: "admin",
+    allowedClubSlug: "technical-events",
+    label: "Technical Events Admin",
+  },
+  {
+    username: "gnitscultural",
+    password: "gnitscultural@1234",
+    role: "admin",
+    allowedClubSlug: "cultural-events",
+    label: "Cultural Events Admin",
+  },
+  {
+    username: "gnitsoutreach",
+    password: "gnitsoutreach@1234",
+    role: "admin",
+    allowedClubSlug: "outreach-events",
+    label: "Outreach Events Admin",
+  },
+  {
+    username: "gnitsi&i",
+    password: "gnitsi&i@1234",
+    role: "admin",
+    allowedClubSlug: "innovation-incubation-cell",
+    label: "Innovation & Incubation Cell Admin",
+  },
+  {
+    username: "gnitsr&d",
+    password: "gnitsr&d@1234",
+    role: "admin",
+    allowedClubSlug: "research-development-cell",
+    label: "Research & Development Cell Admin",
+  },
+  {
+    username: "gnitswpc",
+    password: "gnitswpc@1234",
+    role: "admin",
+    allowedClubSlug: "women-protection-abhaya",
+    label: "Women Protection Cell (Abhaya) Admin",
+  },
+];
+
 export interface SessionPayload {
   username: string;
+  role: PortalRole;
+  allowedClubSlug: string | null;
+  label: string;
   exp: number;
+}
+
+export function resolvePortalAccount(
+  username: string,
+): Omit<AdminAccountConfig, "password"> | null {
+  const normalized = username.trim().toLowerCase();
+  const match = PORTAL_ACCOUNTS.find((acc) => acc.username === normalized);
+  if (!match) return null;
+  const { password: _omit, ...safeAccount } = match;
+  return safeAccount;
+}
+
+export function authenticatePortalCredentials(
+  username: string,
+  password: string,
+  expectedPortal?: PortalRole,
+): Omit<AdminAccountConfig, "password"> {
+  const normalized = username.trim().toLowerCase();
+  const account = PORTAL_ACCOUNTS.find((acc) => acc.username === normalized);
+  if (!account || account.password !== password) {
+    throw new Error("Invalid username or password. Please verify your credentials.");
+  }
+
+  if (expectedPortal === "it-admin" && account.role !== "it-admin") {
+    throw new Error("Only IT-Admin credentials can sign in at /it-admin. Use /admin for club coordinator logins.");
+  }
+  if (expectedPortal === "admin" && account.role !== "admin") {
+    throw new Error("IT-Admin credentials must sign in at /it-admin.");
+  }
+
+  const { password: _omit, ...safeAccount } = account;
+  return safeAccount;
 }
 
 function getAdminSessionSecret(): string {
@@ -63,10 +160,27 @@ function base64UrlDecode(b64url: string): string {
   return Buffer.from(b64url, "base64url").toString("utf-8");
 }
 
-export async function signSession(username: string): Promise<string> {
+export async function signSession(
+  accountOrUsername:
+    | string
+    | Pick<SessionPayload, "username" | "role" | "allowedClubSlug" | "label">,
+): Promise<string> {
   const secret = getAdminSessionSecret();
+  const resolved =
+    typeof accountOrUsername === "string"
+      ? (resolvePortalAccount(accountOrUsername) ?? {
+          username: accountOrUsername,
+          role: "it-admin" as const,
+          allowedClubSlug: null,
+          label: "IT-Admin (Student Council)",
+        })
+      : accountOrUsername;
+
   const payload: SessionPayload = {
-    username,
+    username: resolved.username,
+    role: resolved.role,
+    allowedClubSlug: resolved.allowedClubSlug,
+    label: resolved.label,
     exp: Date.now() + SESSION_DURATION_MS,
   };
   const data = base64UrlEncode(JSON.stringify(payload));
@@ -94,9 +208,29 @@ export async function verifySession(token: string | undefined): Promise<SessionP
     const isValid = await globalThis.crypto.subtle.verify("HMAC", key, sigBuffer, dataBuffer);
     if (!isValid) return null;
 
-    const payload = JSON.parse(base64UrlDecode(data)) as SessionPayload;
-    if (payload.exp && Date.now() > payload.exp) return null;
-    return payload;
+    const raw = JSON.parse(base64UrlDecode(data)) as Partial<SessionPayload> & {
+      username?: string;
+      exp?: number;
+    };
+    if (!raw.username) return null;
+    if (raw.exp && Date.now() > raw.exp) return null;
+
+    const resolved = resolvePortalAccount(raw.username);
+    const role: PortalRole =
+      raw.role === "admin" || raw.role === "it-admin"
+        ? raw.role
+        : resolved?.role ?? "it-admin";
+
+    return {
+      username: raw.username,
+      role,
+      allowedClubSlug:
+        raw.allowedClubSlug !== undefined
+          ? raw.allowedClubSlug
+          : (resolved?.allowedClubSlug ?? null),
+      label: raw.label || resolved?.label || "IT-Admin (Student Council)",
+      exp: raw.exp ?? Date.now() + SESSION_DURATION_MS,
+    };
   } catch {
     return null;
   }

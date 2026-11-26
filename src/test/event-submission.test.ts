@@ -612,4 +612,99 @@ describe("Event Submission Flow & Security Audit", () => {
       }
     });
   });
+
+  it("authenticates IT-Admin and all 6 category Admin accounts strictly on their designated portal and enforces category upload scope", async () => {
+    const {
+      authenticatePortalCredentials,
+      signSession,
+      verifySession,
+    } = await import("@/lib/admin-session.server");
+    const { processStudentEventSubmission, deleteLocalEvent } = await import(
+      "@/lib/events.server"
+    );
+
+    const holder = globalThis as unknown as { __env__?: Record<string, unknown> };
+    const prevEnv = holder.__env__;
+    holder.__env__ = {
+      ADMIN_SESSION_SECRET: "test-secret-0123456789abcdef0123456789",
+    };
+
+    try {
+      const itAcc = authenticatePortalCredentials(
+        "studentcouncil",
+        "studentcouncil@1234",
+        "it-admin",
+      );
+      expect(itAcc.role).toBe("it-admin");
+      expect(itAcc.allowedClubSlug).toBeNull();
+
+      expect(() =>
+        authenticatePortalCredentials("studentcouncil", "studentcouncil@1234", "admin"),
+      ).toThrow();
+      expect(() =>
+        authenticatePortalCredentials("gnitstechnical", "gnitstechnical@1234", "it-admin"),
+      ).toThrow();
+
+      const expectedCategories: Array<[string, string, string]> = [
+        ["gnitstechnical", "gnitstechnical@1234", "technical-events"],
+        ["gnitscultural", "gnitscultural@1234", "cultural-events"],
+        ["gnitsoutreach", "gnitsoutreach@1234", "outreach-events"],
+        ["gnitsi&i", "gnitsi&i@1234", "innovation-incubation-cell"],
+        ["gnitsr&d", "gnitsr&d@1234", "research-development-cell"],
+        ["gnitswpc", "gnitswpc@1234", "women-protection-abhaya"],
+      ];
+
+      for (const [uname, pass, expectedClub] of expectedCategories) {
+        const acc = authenticatePortalCredentials(uname, pass, "admin");
+        expect(acc.role).toBe("admin");
+        expect(acc.allowedClubSlug).toBe(expectedClub);
+
+        const token = await signSession(acc);
+        const verified = await verifySession(token);
+        expect(verified?.role).toBe("admin");
+        expect(verified?.allowedClubSlug).toBe(expectedClub);
+      }
+
+      // Category admin session for Technical Events cannot submit to Cultural Events
+      const techAcc = authenticatePortalCredentials(
+        "gnitstechnical",
+        "gnitstechnical@1234",
+        "admin",
+      );
+      const techToken = await signSession(techAcc);
+      const deniedId = "f1b2c3d4-e5f6-4890-abcd-ef1234567899";
+      const samplePdfBase64 = `data:application/pdf;base64,${Buffer.from("%PDF-1.4\ntest").toString("base64")}`;
+
+      await expect(
+        processStudentEventSubmission(
+          {
+            id: deniedId,
+            clubSlug: "cultural-events",
+            forumSlug: "art-club",
+            eventName: "Cross-Category Denied Event",
+            eventStart: "2026-11-26",
+            eventEnd: "2026-11-26",
+            resourcePersons: "Guest",
+            submitterName: "Tech Admin",
+            submitterEmail: "tech@gnits.ac.in",
+            reportObjectPath: `submissions/${deniedId}/report.pdf`,
+            reportFileName: "report.pdf",
+            reportContentType: "application/pdf",
+            photoObjectPaths: [],
+            photoFileNames: [],
+            reportBase64: samplePdfBase64,
+          },
+          techToken,
+        ),
+      ).rejects.toThrow();
+
+      deleteLocalEvent(deniedId);
+    } finally {
+      if (prevEnv === undefined) {
+        delete holder.__env__;
+      } else {
+        holder.__env__ = prevEnv;
+      }
+    }
+  });
 });
