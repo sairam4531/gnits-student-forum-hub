@@ -241,17 +241,17 @@ export function EventsClubsDrawer({
         onClick={onClose}
       />
 
-      {/* Low place (compact) Sidebar - max-w-xs (288px - 320px) matching the uploaded image */}
-      <div className="relative w-72 sm:w-80 max-w-[85vw] bg-white h-full shadow-2xl flex flex-col z-10 animate-in slide-in-from-left duration-250 border-r border-slate-200">
-        {/* Compact Header */}
-        <div className="px-3.5 py-3 border-b border-slate-200 bg-white flex items-center justify-between">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <GnitsCollegeLogo className="h-8 w-8 flex-shrink-0" />
+      {/* Sidebar Drawer */}
+      <div className="relative w-80 sm:w-96 max-w-[88vw] bg-white h-full shadow-2xl flex flex-col z-10 animate-in slide-in-from-left duration-250 border-r border-slate-200">
+        {/* Header */}
+        <div className="px-4 py-3.5 border-b border-slate-200 bg-white flex items-center justify-between">
+          <div className="flex items-center gap-3 min-w-0">
+            <GnitsCollegeLogo className="h-10 w-10 flex-shrink-0" />
             <div className="min-w-0">
-              <h3 className="text-xs font-black text-slate-900 tracking-tight leading-none truncate">
+              <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-tight truncate">
                 {isAdmin ? "Admin Affairs Portal" : "Student Affairs Portal"}
               </h3>
-              <p className="text-[10px] text-slate-500 font-medium truncate mt-0.5">
+              <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
                 Events &amp; Forums Navigation
               </p>
             </div>
@@ -260,29 +260,29 @@ export function EventsClubsDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
             aria-label="Close sidebar"
           >
-            <X className="h-4 w-4" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Compact Search Bar */}
-        <div className="p-2.5 border-b border-slate-100 bg-slate-50/70">
+        {/* Search Bar */}
+        <div className="p-3 border-b border-slate-100 bg-slate-50/70">
           <div className="relative">
-            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <input
               type="text"
               placeholder="Search event or club..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-8 pr-2.5 py-1.5 text-xs rounded-lg bg-white border border-slate-200 text-slate-800 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 placeholder:text-slate-400"
+              className="w-full pl-9 pr-3 py-2 text-sm rounded-lg bg-white border border-slate-200 text-slate-800 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 placeholder:text-slate-400"
             />
             {searchTerm && (
               <button
                 type="button"
                 onClick={() => setSearchTerm("")}
-                className="absolute right-2 top-1.5 text-[10px] text-slate-400 hover:text-slate-700"
+                className="absolute right-2.5 top-2 text-xs text-slate-400 hover:text-slate-700"
               >
                 Clear
               </button>
@@ -290,18 +290,18 @@ export function EventsClubsDrawer({
           </div>
         </div>
 
-        {/* Compact Sidebar Menu */}
-        <div className="flex-1 overflow-y-auto divide-y divide-slate-100 text-xs">
+        {/* Sidebar Menu */}
+        <div className="flex-1 overflow-y-auto divide-y divide-slate-100 text-sm">
           {isSearching ? (
             /* Search Results */
-            <div className="p-2 space-y-1">
-              <span className="text-[10px] font-bold text-slate-400 px-2 uppercase tracking-wider block mb-1">
+            <div className="p-2.5 space-y-1.5">
+              <span className="text-xs font-bold text-slate-400 px-2 uppercase tracking-wider block mb-1">
                 Found {searchResults.length} matches
               </span>
               {searchResults.length === 0 ? (
                 <div className="text-center py-8 text-slate-400">
-                  <Calendar className="h-7 w-7 mx-auto mb-1 opacity-40" />
-                  <p className="text-[11px] font-semibold">No events match "{searchTerm}"</p>
+                  <Calendar className="h-8 w-8 mx-auto mb-1 opacity-40" />
+                  <p className="text-sm font-semibold">No events match "{searchTerm}"</p>
                 </div>
               ) : (
                 searchResults.map((item, idx) => {
@@ -320,19 +320,19 @@ export function EventsClubsDrawer({
                             handleSelect(item.club as ForumClub, item.name);
                           }
                         }}
-                        className="w-full flex items-center justify-between p-2 bg-white hover:bg-orange-50/80 hover:text-orange-700 transition-colors text-left cursor-pointer"
+                        className="w-full flex items-center justify-between p-2.5 bg-white hover:bg-orange-50/80 hover:text-orange-700 transition-colors text-left cursor-pointer"
                       >
                         <div>
-                          <span className="text-[9px] font-bold text-orange-600 uppercase tracking-wider block">
+                          <span className="text-[11px] font-bold text-orange-600 uppercase tracking-wider block">
                             {item.group}
                           </span>
-                          <span className="font-semibold text-slate-900">{item.name}</span>
+                          <span className="text-sm font-semibold text-slate-900">{item.name}</span>
                         </div>
                         {isInst ? (
                           isSearchExpanded ? (
-                            <ChevronDown className="h-3.5 w-3.5 text-orange-600" />
+                            <ChevronDown className="h-4 w-4 text-orange-600" />
                           ) : (
-                            <ChevronRight className="h-3.5 w-3.5 text-orange-500" />
+                            <ChevronRight className="h-4 w-4 text-orange-500" />
                           )
                         ) : (
                           <span className="text-orange-500 font-bold">➤</span>
@@ -340,15 +340,15 @@ export function EventsClubsDrawer({
                       </button>
 
                       {isSearchExpanded && (
-                        <div className="bg-slate-50 pl-4 pr-2 py-1 space-y-0.5 border-t border-slate-100">
+                        <div className="bg-slate-50 pl-4 pr-2.5 py-1.5 space-y-1 border-t border-slate-100">
                           {ACADEMIC_YEARS.map((ay) => (
                             <button
                               key={ay}
                               type="button"
                               onClick={() => handleSelectInstitutionalAy(item.name, ay)}
-                              className="w-full flex items-center gap-2 py-1.5 text-left text-slate-700 hover:text-orange-600 transition-colors group cursor-pointer"
+                              className="w-full flex items-center gap-2 py-1.5 text-left text-sm text-slate-700 hover:text-orange-600 transition-colors group cursor-pointer"
                             >
-                              <span className="text-[11px] text-orange-500 font-bold flex-shrink-0">
+                              <span className="text-xs text-orange-500 font-bold flex-shrink-0">
                                 ➤
                               </span>
                               <span className="font-semibold">{ay}</span>
@@ -373,14 +373,14 @@ export function EventsClubsDrawer({
                     <button
                       type="button"
                       onClick={handleDashboardClick}
-                      className="w-full flex items-center justify-between px-3 py-2.5 bg-white text-slate-800 hover:bg-orange-50/70 hover:text-orange-700 font-semibold transition-colors text-left cursor-pointer group"
+                      className="w-full flex items-center justify-between px-4 py-3 bg-white text-slate-900 hover:bg-orange-50/70 hover:text-orange-700 text-[15px] font-bold transition-colors text-left cursor-pointer group"
                     >
-                      <div className="flex items-center gap-2.5 min-w-0 pr-1">
-                        <IconComp className="h-4 w-4 flex-shrink-0 text-slate-600 group-hover:text-orange-600 transition-colors" />
+                      <div className="flex items-center gap-3 min-w-0 pr-1">
+                        <IconComp className="h-5 w-5 flex-shrink-0 text-slate-600 group-hover:text-orange-600 transition-colors" />
                         <span className="truncate tracking-tight font-bold">{item.name}</span>
                       </div>
 
-                      <ChevronRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-orange-600 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+                      <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-orange-600 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
                     </button>
                   </div>
                 );
@@ -395,15 +395,15 @@ export function EventsClubsDrawer({
                     <button
                       type="button"
                       onClick={() => toggleEvent(item.name)}
-                      className={`w-full flex items-center justify-between px-3 py-2.5 transition-all text-left cursor-pointer ${
+                      className={`w-full flex items-center justify-between px-4 py-3 text-[15px] transition-all text-left cursor-pointer ${
                         isExpanded
                           ? "bg-gradient-to-r from-orange-500 to-amber-500 text-white font-bold shadow-xs"
-                          : "bg-white text-slate-800 hover:bg-slate-50 font-medium"
+                          : "bg-white text-slate-900 hover:bg-slate-50 font-semibold"
                       }`}
                     >
-                      <div className="flex items-center gap-2.5 min-w-0 pr-1">
+                      <div className="flex items-center gap-3 min-w-0 pr-1">
                         <IconComp
-                          className={`h-4 w-4 flex-shrink-0 ${
+                          className={`h-5 w-5 flex-shrink-0 ${
                             isExpanded ? "text-white" : "text-slate-600"
                           }`}
                         />
@@ -433,34 +433,34 @@ export function EventsClubsDrawer({
                               <button
                                 type="button"
                                 onClick={() => toggleForumCat(cat.title)}
-                                className={`w-full flex items-center justify-between pl-6 pr-3 py-2 text-left transition-colors cursor-pointer ${
+                                className={`w-full flex items-center justify-between pl-7 pr-4 py-2.5 text-sm text-left transition-colors cursor-pointer ${
                                   isCatExpanded
                                     ? "bg-orange-100/70 text-orange-950 font-bold"
                                     : "hover:bg-slate-100 text-slate-700 font-semibold"
                                 }`}
                               >
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <cat.icon className="h-3.5 w-3.5 text-orange-600 flex-shrink-0" />
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <cat.icon className="h-4 w-4 text-orange-600 flex-shrink-0" />
                                   <span className="truncate">{cat.title}</span>
                                 </div>
                                 {isCatExpanded ? (
-                                  <ChevronDown className="h-3.5 w-3.5 text-orange-600 flex-shrink-0" />
+                                  <ChevronDown className="h-4 w-4 text-orange-600 flex-shrink-0" />
                                 ) : (
-                                  <ChevronRight className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                                  <ChevronRight className="h-4 w-4 text-slate-400 flex-shrink-0" />
                                 )}
                               </button>
 
                               {/* Available Clubs in this Category (Indented with ➤ arrows) */}
                               {isCatExpanded && (
-                                <div className="bg-white pl-8 pr-3 py-1 space-y-0.5 border-l-2 border-orange-400 ml-5 my-1">
+                                <div className="bg-white pl-8 pr-4 py-1.5 space-y-1 border-l-2 border-orange-400 ml-6 my-1">
                                   {cat.forums.map((forumName) => (
                                     <button
                                       key={forumName}
                                       type="button"
                                       onClick={() => handleSelect(clubEntry, forumName)}
-                                      className="w-full flex items-center gap-2 py-1.5 text-left text-slate-700 hover:text-orange-600 transition-colors group cursor-pointer"
+                                      className="w-full flex items-center gap-2 py-1.5 text-sm text-left text-slate-700 hover:text-orange-600 transition-colors group cursor-pointer"
                                     >
-                                      <span className="text-[11px] text-orange-500 font-bold flex-shrink-0 group-hover:translate-x-0.5 transition-transform">
+                                      <span className="text-xs text-orange-500 font-bold flex-shrink-0 group-hover:translate-x-0.5 transition-transform">
                                         ➤
                                       </span>
                                       <span className="truncate font-medium">{forumName}</span>
@@ -484,15 +484,15 @@ export function EventsClubsDrawer({
                   <button
                     type="button"
                     onClick={() => toggleEvent(item.name)}
-                    className={`w-full flex items-center justify-between px-3 py-2.5 transition-all text-left cursor-pointer group ${
+                    className={`w-full flex items-center justify-between px-4 py-3 text-[15px] transition-all text-left cursor-pointer group ${
                       isEventExpanded
                         ? "bg-orange-50 text-orange-800 font-bold"
-                        : "bg-white text-slate-800 hover:bg-orange-50/70 hover:text-orange-700 font-medium"
+                        : "bg-white text-slate-900 hover:bg-orange-50/70 hover:text-orange-700 font-semibold"
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0 pr-1">
+                    <div className="flex items-center gap-3 min-w-0 pr-1">
                       <IconComp
-                        className={`h-4 w-4 flex-shrink-0 transition-colors ${
+                        className={`h-5 w-5 flex-shrink-0 transition-colors ${
                           isEventExpanded
                             ? "text-orange-600"
                             : "text-slate-600 group-hover:text-orange-600"
@@ -502,22 +502,22 @@ export function EventsClubsDrawer({
                     </div>
 
                     {isEventExpanded ? (
-                      <ChevronDown className="h-3.5 w-3.5 text-orange-600 flex-shrink-0" />
+                      <ChevronDown className="h-4 w-4 text-orange-600 flex-shrink-0" />
                     ) : (
-                      <ChevronRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-orange-600 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+                      <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-orange-600 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
                     )}
                   </button>
 
                   {isEventExpanded && (
-                    <div className="bg-slate-50/90 pl-7 pr-3 py-1.5 space-y-0.5 border-l-2 border-orange-400 ml-5 my-1 animate-in slide-in-from-top-1 duration-150">
+                    <div className="bg-slate-50/90 pl-8 pr-4 py-1.5 space-y-1 border-l-2 border-orange-400 ml-6 my-1 animate-in slide-in-from-top-1 duration-150">
                       {ACADEMIC_YEARS.map((ay) => (
                         <button
                           key={ay}
                           type="button"
                           onClick={() => handleSelectInstitutionalAy(item.name, ay)}
-                          className="w-full flex items-center gap-2 py-1.5 text-left text-slate-700 hover:text-orange-600 transition-colors group cursor-pointer"
+                          className="w-full flex items-center gap-2 py-1.5 text-sm text-left text-slate-700 hover:text-orange-600 transition-colors group cursor-pointer"
                         >
-                          <span className="text-[11px] text-orange-500 font-bold flex-shrink-0 group-hover:translate-x-0.5 transition-transform">
+                          <span className="text-xs text-orange-500 font-bold flex-shrink-0 group-hover:translate-x-0.5 transition-transform">
                             ➤
                           </span>
                           <span className="truncate font-semibold">{ay}</span>
