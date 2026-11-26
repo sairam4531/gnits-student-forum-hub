@@ -162,7 +162,7 @@ export const getAllPublicEventsServerFn = createServerFn({ method: "GET" }).hand
   async (): Promise<PublicEventRecord[]> => {
     const [remoteEvents, storeEvents] = await Promise.all([
       fetchPublicSupabaseEvents(),
-      getEventsStoreAsync(),
+      getEventsStoreAsync({ strictKv: true }),
     ]);
     return mergePublicEventLists(remoteEvents, storeEvents);
   },
@@ -178,7 +178,7 @@ export const getPublicForumEvents = createServerFn({ method: "GET" })
     const filter = { clubSlug: data.clubSlug, forumSlug: data.forumSlug };
     const [remoteEvents, storeEvents] = await Promise.all([
       fetchPublicSupabaseEvents(filter),
-      getEventsStoreAsync(),
+      getEventsStoreAsync({ strictKv: true }),
     ]);
     return mergePublicEventLists(remoteEvents, storeEvents, filter);
   });

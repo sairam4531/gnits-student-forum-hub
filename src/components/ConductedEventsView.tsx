@@ -113,7 +113,7 @@ export function ConductedEventsView({
         const timeoutPromise = new Promise<never>((_, reject) => {
           timeoutId = setTimeout(
             () => reject(new Error("Timed out loading forum events.")),
-            8000,
+            15000,
           );
         });
 
@@ -143,7 +143,16 @@ export function ConductedEventsView({
         const clientEvs = getClientEvents().filter(
           (e) => e.club_slug === club.slug && e.forum_slug === forumSlug,
         );
-        setEvents(clientEvs as PublicEvent[]);
+        if (clientEvs.length > 0) {
+          setEvents(clientEvs as PublicEvent[]);
+        } else {
+          setEvents([]);
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Could not load events from shared server storage.",
+          );
+        }
       } finally {
         if (timeoutId !== undefined) {
           clearTimeout(timeoutId);

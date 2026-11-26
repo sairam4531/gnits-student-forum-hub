@@ -269,7 +269,7 @@ export const getAdminForumEventsServerFn = createServerFn({ method: "GET" })
     }
 
     // 2. Secondary fallback / bundled events (e.g. if Supabase is cold or KV-backed)
-    const allLocal = await getEventsStoreAsync();
+    const allLocal = await getEventsStoreAsync({ strictKv: true });
     for (const ev of allLocal) {
       if (ev.club_slug === data.clubSlug && ev.forum_slug === data.forumSlug && !seenIds.has(ev.id)) {
         seenIds.add(ev.id);
@@ -342,7 +342,7 @@ export const getAllAdminEventsServerFn = createServerFn({ method: "GET" }).handl
   }
 
   // 2. Secondary fallback / bundled events
-  const allLocal = await getEventsStoreAsync();
+  const allLocal = await getEventsStoreAsync({ strictKv: true });
   for (const ev of allLocal) {
     if (!seenIds.has(ev.id)) {
       seenIds.add(ev.id);

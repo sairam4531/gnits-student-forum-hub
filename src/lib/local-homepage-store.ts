@@ -262,17 +262,10 @@ function createCloudflareKvRestClient(
       key: string,
       type: "json" | "text" | "arrayBuffer" | "stream",
     ): Promise<T | null> {
-      const isCloudflareWorker =
-        typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers";
-      const init: RequestInit = {
+      const response = await fetchKvRestWithRetry(keyUrl(key), {
         method: "GET",
-        headers: {
-          Authorization: `Bearer ${apiToken}`,
-          "Cache-Control": "no-store",
-        },
-        ...(isCloudflareWorker ? {} : { cache: "no-store" as const }),
-      };
-      const response = await fetchKvRestWithRetry(keyUrl(key), init);
+        headers: { Authorization: `Bearer ${apiToken}` },
+      });
       if (response.status === 404) {
         return null;
       }

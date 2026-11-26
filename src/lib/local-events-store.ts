@@ -132,11 +132,10 @@ export async function getEventsStoreAsync(options?: {
         globalThis.__gnitsEventsStore = kvData;
         return kvData;
       }
-      if (strictKv) {
-        const emptyEvents: AdminEventRecord[] = [];
-        globalThis.__gnitsEventsStore = emptyEvents;
-        return emptyEvents;
-      }
+      // Never leak bundled sample data when Cloudflare KV is configured
+      const emptyEvents: AdminEventRecord[] = [];
+      globalThis.__gnitsEventsStore = emptyEvents;
+      return emptyEvents;
     }
   } catch (err) {
     if (strictKv) {
