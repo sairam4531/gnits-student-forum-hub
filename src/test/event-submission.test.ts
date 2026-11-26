@@ -619,9 +619,10 @@ describe("Event Submission Flow & Security Audit", () => {
       signSession,
       verifySession,
     } = await import("@/lib/admin-session.server");
-    const { processStudentEventSubmission, deleteLocalEvent } = await import(
+    const { processStudentEventSubmission } = await import(
       "@/lib/events.server"
     );
+    const { deleteLocalEvent } = await import("@/lib/local-events-store");
 
     const holder = globalThis as unknown as { __env__?: Record<string, unknown> };
     const prevEnv = holder.__env__;
