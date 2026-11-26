@@ -125,16 +125,16 @@ export function StudentAffairsHeader({
   }, []);
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-[#2563eb] text-white border-b-2 border-blue-700/80 shadow-md select-none">
+    <header className="sticky top-0 z-40 w-full bg-white text-slate-900 border-b border-slate-200 shadow-sm select-none">
       <div className="w-full px-2 sm:px-4 lg:px-6 h-18 sm:h-20 flex items-center justify-between gap-2 sm:gap-4">
         {/* Left Boundary: Hamburger Menu (Three Lines) + GNITS College Logo */}
-        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 z-20 bg-[#2563eb] pr-1 sm:pr-2">
+        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 z-20 bg-white pr-1 sm:pr-2">
           {/* Hamburger button (three horizontal lines) */}
           <button
             type="button"
             onClick={onOpenDrawer}
             aria-label="Open Available Events & Clubs Menu"
-            className="p-1.5 sm:p-2 rounded-xl bg-white/10 hover:bg-white/20 active:bg-white/30 text-slate-900 transition-colors focus:outline-none focus:ring-2 focus:ring-white/40 cursor-pointer flex-shrink-0"
+            className="p-1.5 sm:p-2 rounded-xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-900 transition-colors focus:outline-none focus:ring-2 focus:ring-slate-300 cursor-pointer flex-shrink-0"
             title="Available Events & Clubs"
           >
             <div className="flex flex-col gap-1.5 justify-center items-center w-7 sm:w-8 py-1">
@@ -186,7 +186,7 @@ export function StudentAffairsHeader({
         </div>
 
         {/* Right Boundary: 28 Years of Excellence Logo */}
-        <div className="flex-shrink-0 z-20 bg-[#2563eb] pl-1 sm:pl-2 flex items-center justify-center">
+        <div className="flex-shrink-0 z-20 bg-white pl-1 sm:pl-2 flex items-center justify-center">
           <div className="h-13 w-13 sm:h-16 sm:w-16 flex items-center justify-center flex-shrink-0">
             <AnniversaryLogo className="h-full w-full" />
           </div>
