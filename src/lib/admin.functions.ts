@@ -363,7 +363,7 @@ export const deleteAdminEventServerFn = createServerFn({ method: "POST" })
     if (!session) throw new Error("Unauthorized. Admin access required.");
 
     deleteLocalEvent(data.id);
-    const existingEvents = await getEventsStoreAsync();
+    const existingEvents = await getEventsStoreAsync({ strictKv: true });
     const targetEvent = existingEvents.find((e) => e.id === data.id);
     const remaining = existingEvents.filter((e) => e.id !== data.id);
     await saveEventsStoreAsync(remaining);

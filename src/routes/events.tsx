@@ -130,8 +130,8 @@ function DedicatedEventPage() {
       try {
         const events = await getAllPublicEventsServerFn();
         if (Array.isArray(events)) {
-          syncClientEvents(events);
-          setRecentEvents(events);
+          const reconciled = syncClientEvents(events);
+          setRecentEvents(reconciled);
         }
       } catch (err) {
         console.warn("Could not load events:", err);

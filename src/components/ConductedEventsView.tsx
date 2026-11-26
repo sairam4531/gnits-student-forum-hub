@@ -128,10 +128,15 @@ export function ConductedEventsView({
         ]);
 
         if (Array.isArray(data)) {
-          setEvents(data as PublicEvent[]);
-          syncClientForumEvents(club.slug, forumSlug, data as PublicEventRecord[]);
+          const reconciled = syncClientForumEvents(
+            club.slug,
+            forumSlug,
+            data as PublicEventRecord[],
+          );
+          setEvents(reconciled as PublicEvent[]);
         } else {
-          setEvents([]);
+          const reconciled = syncClientForumEvents(club.slug, forumSlug, []);
+          setEvents(reconciled as PublicEvent[]);
         }
       } catch (err: unknown) {
         console.warn("Could not load public events:", err);
@@ -413,19 +418,29 @@ export function ConductedEventsView({
         { broadcast: false },
       );
 
-      saveClientEvent(
-        {
-          id: res.id || submissionId,
-          club_slug: club.slug,
-          forum_slug: forumSlug,
-          event_name: eventName.trim(),
-          event_start: eventStart,
-          event_end: eventEnd,
-          created_at: existingCreatedAt || new Date().toISOString(),
-          ...(isInstitutionalEvent ? {} : { resource_persons: resourcePersons.trim() }),
-        },
-        { broadcast: true },
-      );
+      const savedEventId = res.id || submissionId;
+      const newPublicEvent: PublicEvent = {
+        id: savedEventId,
+        club_slug: club.slug,
+        forum_slug: forumSlug,
+        event_name: eventName.trim(),
+        event_start: eventStart,
+        event_end: eventEnd,
+        created_at: existingCreatedAt || new Date().toISOString(),
+        ...(isInstitutionalEvent ? {} : { resource_persons: resourcePersons.trim() }),
+      };
+
+      saveClientEvent(newPublicEvent, { broadcast: true });
+
+      setEvents((prev) => {
+        const existingIdx = prev.findIndex((item) => item.id === savedEventId);
+        if (existingIdx >= 0) {
+          const updated = [...prev];
+          updated[existingIdx] = newPublicEvent;
+          return updated;
+        }
+        return [newPublicEvent, ...prev];
+      });
 
       setSubmitSuccess(true);
       // Refresh authoritative events list silently from server

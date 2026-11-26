@@ -120,7 +120,10 @@ export function saveFileLocally(relativePath: string, base64Data: string): strin
   }
 }
 
-export async function getEventsStoreAsync(): Promise<AdminEventRecord[]> {
+export async function getEventsStoreAsync(options?: {
+  strictKv?: boolean;
+}): Promise<AdminEventRecord[]> {
+  const strictKv = Boolean(options?.strictKv);
   try {
     const cfKv = getCloudflareKVNamespace();
     if (cfKv && typeof cfKv.get === "function") {
@@ -129,8 +132,20 @@ export async function getEventsStoreAsync(): Promise<AdminEventRecord[]> {
         globalThis.__gnitsEventsStore = kvData;
         return kvData;
       }
+      if (strictKv) {
+        const emptyEvents: AdminEventRecord[] = [];
+        globalThis.__gnitsEventsStore = emptyEvents;
+        return emptyEvents;
+      }
     }
   } catch (err) {
+    if (strictKv) {
+      throw new Error(
+        err instanceof Error
+          ? `Could not read events store from Cloudflare KV: ${err.message}`
+          : "Could not read events store from Cloudflare KV.",
+      );
+    }
     console.warn("Could not read events store from Cloudflare KV:", err);
   }
 
@@ -138,9 +153,15 @@ export async function getEventsStoreAsync(): Promise<AdminEventRecord[]> {
 }
 
 export async function saveEventsStoreAsync(events: AdminEventRecord[]): Promise<void> {
+  // 1. Persist to Cloudflare KV first so remote persistence failures are surfaced to callers
+  const cfKv = getCloudflareKVNamespace();
+  if (cfKv && typeof cfKv.put === "function") {
+    await cfKv.put("events_store", JSON.stringify(events));
+  }
+
   globalThis.__gnitsEventsStore = events;
 
-  // 1. Write to local /tmp and data/ for dev fallback
+  // 2. Write to local /tmp and data/ for dev fallback
   try {
     if (!fs.existsSync(TMP_DATA_DIR)) {
       fs.mkdirSync(TMP_DATA_DIR, { recursive: true });
@@ -153,16 +174,6 @@ export async function saveEventsStoreAsync(events: AdminEventRecord[]): Promise<
     }
     fs.writeFileSync(LOCAL_EVENTS_FILE, JSON.stringify(events, null, 2), "utf-8");
   } catch {}
-
-  // 2. Persist to Cloudflare KV for cross-browser synchronization
-  try {
-    const cfKv = getCloudflareKVNamespace();
-    if (cfKv && typeof cfKv.put === "function") {
-      await cfKv.put("events_store", JSON.stringify(events));
-    }
-  } catch (err) {
-    console.warn("Could not persist events to Cloudflare KV:", err);
-  }
 }
 
 export interface StoredEventFileMetadata {

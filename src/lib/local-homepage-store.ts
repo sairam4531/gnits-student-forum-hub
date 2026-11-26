@@ -205,6 +205,38 @@ function toRequestBody(
   return { body: copy, contentType: "application/octet-stream" };
 }
 
+const KV_RETRY_DELAYS_MS = [150, 350] as const;
+
+function isRetryableKvStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+async function fetchKvRestWithRetry(url: string, init: RequestInit): Promise<Response> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt <= KV_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      const response = await fetch(url, init);
+      if (response.ok || response.status === 404 || !isRetryableKvStatus(response.status)) {
+        return response;
+      }
+      if (attempt < KV_RETRY_DELAYS_MS.length) {
+        const delayMs = KV_RETRY_DELAYS_MS[attempt] ?? 350;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+      return response;
+    } catch (err) {
+      lastError = err;
+      if (attempt < KV_RETRY_DELAYS_MS.length) {
+        const delayMs = KV_RETRY_DELAYS_MS[attempt] ?? 350;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Cloudflare KV REST request failed");
+}
+
 let cachedKvRestKey = "";
 let cachedKvRestClient: CloudflareKVBinding | null = null;
 
@@ -230,10 +262,17 @@ function createCloudflareKvRestClient(
       key: string,
       type: "json" | "text" | "arrayBuffer" | "stream",
     ): Promise<T | null> {
-      const response = await fetch(keyUrl(key), {
+      const isCloudflareWorker =
+        typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers";
+      const init: RequestInit = {
         method: "GET",
-        headers: { Authorization: `Bearer ${apiToken}` },
-      });
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Cache-Control": "no-store",
+        },
+        ...(isCloudflareWorker ? {} : { cache: "no-store" as const }),
+      };
+      const response = await fetchKvRestWithRetry(keyUrl(key), init);
       if (response.status === 404) {
         return null;
       }
@@ -255,7 +294,7 @@ function createCloudflareKvRestClient(
 
     async put(key: string, value: string | ArrayBuffer | ArrayBufferView): Promise<void> {
       const { body, contentType } = toRequestBody(value);
-      const response = await fetch(keyUrl(key), {
+      const response = await fetchKvRestWithRetry(keyUrl(key), {
         method: "PUT",
         headers: {
           Authorization: `Bearer ${apiToken}`,
@@ -269,7 +308,7 @@ function createCloudflareKvRestClient(
     },
 
     async delete(key: string): Promise<void> {
-      const response = await fetch(keyUrl(key), {
+      const response = await fetchKvRestWithRetry(keyUrl(key), {
         method: "DELETE",
         headers: { Authorization: `Bearer ${apiToken}` },
       });

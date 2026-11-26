@@ -30,6 +30,8 @@ import {
   getClientEvents,
   deleteClientAdminEvent,
   deleteClientEvent,
+  getRecentEventIds,
+  getDeletedEventIds,
   EVENTS_KEY,
   ADMIN_EVENTS_KEY,
   DELETED_IDS_KEY,
@@ -128,8 +130,22 @@ export function AdminEventsView({
 
       clientAdminEvents.forEach((ev) => map.set(ev.id, ev));
 
-      // Server events are authoritative across browsers and sessions
-      serverEvents.forEach((ev) => map.set(ev.id, ev));
+      // Server events are authoritative across browsers and sessions once propagated
+      const recentIds = getRecentEventIds();
+      const deletedIds = new Set(getDeletedEventIds());
+      serverEvents
+        .filter((ev) => !deletedIds.has(ev.id))
+        .forEach((ev) => {
+          const localExisting = map.get(ev.id);
+          if (localExisting?.updated_at && recentIds.has(ev.id)) {
+            const localEditTs = Date.parse(localExisting.updated_at);
+            const serverTs = Date.parse(ev.updated_at || ev.created_at || "");
+            if (!Number.isNaN(localEditTs) && (Number.isNaN(serverTs) || localEditTs > serverTs)) {
+              return;
+            }
+          }
+          map.set(ev.id, ev);
+        });
 
       // Deduplicate: Primary by ID, secondary by exact signature fallback (prevents dual-cached submissions)
       const finalEvents: AdminEventRecord[] = [];

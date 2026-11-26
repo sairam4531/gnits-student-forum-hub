@@ -414,5 +414,130 @@ describe("Event Submission Flow & Security Audit", () => {
         }
       }
     });
+
+    it("fails submission when KV persistence of events_store fails and preserves concurrent events written during file uploads", async () => {
+      const { processStudentEventSubmission } = await import("@/lib/events.server");
+      const { saveEventsStoreAsync, deleteLocalEvent } = await import("@/lib/local-events-store");
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+
+      const subId1 = "c1b2c3d4-e5f6-4890-abcd-ef1234567892";
+      const subId2 = "d1b2c3d4-e5f6-4890-abcd-ef1234567893";
+      const reportPath1 = `submissions/${subId1}/report.pdf`;
+      const reportPath2 = `submissions/${subId2}/report.pdf`;
+      const samplePdfBase64 = `data:application/pdf;base64,${Buffer.from("%PDF-1.4\nok").toString("base64")}`;
+
+      type GlobalEnvHolder = { __env__?: Record<string, unknown> | undefined };
+      const holder = globalThis as unknown as GlobalEnvHolder;
+      const prevEnv = holder.__env__;
+      const prevEventsStore = globalThis.__gnitsEventsStore;
+
+      try {
+        // 1. saveEventsStoreAsync and processStudentEventSubmission throw when KV put fails
+        const failingKv = {
+          get: async () => [],
+          put: async (key: string) => {
+            if (key === "events_store") {
+              throw new Error("Simulated KV 429 rate limit");
+            }
+          },
+        };
+        holder.__env__ = {
+          ADMIN_SESSION_SECRET: "test-admin-secret-for-vitest",
+          KV: failingKv,
+        };
+        await expect(saveEventsStoreAsync([])).rejects.toThrow(/rate limit/i);
+        await expect(
+          processStudentEventSubmission({
+            id: subId1,
+            clubSlug: "institutional-events",
+            forumSlug: "annual-day--ay-2023-24",
+            eventName: "Should Fail Cleanly",
+            eventStart: "2024-03-10",
+            eventEnd: "2024-03-10",
+            reportObjectPath: reportPath1,
+            reportFileName: "report.pdf",
+            reportContentType: "application/pdf",
+            photoObjectPaths: [],
+            photoFileNames: [],
+            reportBase64: samplePdfBase64,
+          }),
+        ).rejects.toThrow(/Failed to save event submission to Cloudflare KV/i);
+
+        // 2. Concurrent event injected into KV during file upload is preserved (no read-before-upload overwrite)
+        const kvState = new Map<string, string | ArrayBuffer>();
+        const concurrentEvent = {
+          id: "concurrent-evt-1",
+          club_slug: "institutional-events",
+          forum_slug: "annual-day--ay-2023-24",
+          event_name: "Concurrent Submission",
+          event_start: "2024-03-09",
+          event_end: "2024-03-09",
+          resource_persons: "",
+          submitter_name: null,
+          submitter_email: null,
+          report_object_path: "submissions/concurrent/report.pdf",
+          report_file_name: "concurrent.pdf",
+          report_content_type: "application/pdf",
+          photo_object_paths: [],
+          photo_file_names: [],
+          created_at: new Date().toISOString(),
+        };
+
+        const raceKv = {
+          get: async (key: string, type?: string) => {
+            const val = kvState.get(key);
+            if (val === undefined) return null;
+            if (type === "json" && typeof val === "string") return JSON.parse(val);
+            return val;
+          },
+          put: async (key: string, value: string | ArrayBuffer) => {
+            // Simulate a concurrent event finishing right when our file finishes uploading
+            if (key === `event_file_meta:${reportPath2}`) {
+              kvState.set("events_store", JSON.stringify([concurrentEvent]));
+            }
+            kvState.set(key, value);
+          },
+        };
+        holder.__env__ = {
+          ADMIN_SESSION_SECRET: "test-admin-secret-for-vitest",
+          KV: raceKv,
+        };
+
+        const okRes = await processStudentEventSubmission({
+          id: subId2,
+          clubSlug: "institutional-events",
+          forumSlug: "annual-day--ay-2023-24",
+          eventName: "Second Event After Concurrent Write",
+          eventStart: "2024-03-11",
+          eventEnd: "2024-03-11",
+          reportObjectPath: reportPath2,
+          reportFileName: "report.pdf",
+          reportContentType: "application/pdf",
+          photoObjectPaths: [],
+          photoFileNames: [],
+          reportBase64: samplePdfBase64,
+        });
+        expect(okRes.success).toBe(true);
+        const storedEvents = JSON.parse(kvState.get("events_store") as string) as Array<{ id: string }>;
+        expect(storedEvents.map((e) => e.id)).toContain("concurrent-evt-1");
+        expect(storedEvents.map((e) => e.id)).toContain(subId2);
+      } finally {
+        deleteLocalEvent(subId1);
+        deleteLocalEvent(subId2);
+        globalThis.__gnitsEventsStore = prevEventsStore;
+        for (const id of [subId1, subId2]) {
+          const subDir = path.resolve(process.cwd(), "public", "submissions", id);
+          if (fs.existsSync(subDir)) {
+            fs.rmSync(subDir, { recursive: true, force: true });
+          }
+        }
+        if (prevEnv === undefined) {
+          delete holder.__env__;
+        } else {
+          holder.__env__ = prevEnv;
+        }
+      }
+    });
   });
 });

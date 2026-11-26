@@ -84,7 +84,9 @@ export async function processStudentEventSubmission(
     );
   }
 
-  const currentEvents = await getEventsStoreAsync();
+  const currentEvents = await getEventsStoreAsync({
+    strictKv: hasCfKv && !supabaseReady,
+  });
   const existingStoreIndex = currentEvents.findIndex((e) => e.id === eventId);
   const existingStoreEvent =
     existingStoreIndex >= 0 ? currentEvents[existingStoreIndex] : undefined;
@@ -176,6 +178,8 @@ export async function processStudentEventSubmission(
     );
     if (savedKvReport) {
       reportDownloadUrl = buildEventFileDownloadUrl(finalReportObjectPath);
+    } else if (hasCfKv && !supabaseReady) {
+      throw new Error("Failed to store event report file in Cloudflare KV.");
     }
   }
 
@@ -211,6 +215,8 @@ export async function processStudentEventSubmission(
         const savedKvPhoto = await saveEventFileToKv(pPath, b64, undefined, pName);
         if (savedKvPhoto) {
           resolvedPhotoUrl = buildEventFileDownloadUrl(pPath);
+        } else if (hasCfKv && !supabaseReady) {
+          throw new Error("Failed to store event photo file in Cloudflare KV.");
         }
       }
       photoDownloadUrls.push(resolvedPhotoUrl);
@@ -337,9 +343,13 @@ export async function processStudentEventSubmission(
   };
 
   try {
-    const updatedEvents = [...currentEvents];
-    if (existingStoreIndex >= 0) {
-      updatedEvents[existingStoreIndex] = eventRecord;
+    // Re-read the latest KV snapshot right before writing so files uploaded earlier
+    // do not create a stale read-modify-write race against concurrent submissions.
+    const latestEvents = await getEventsStoreAsync({ strictKv: hasCfKv });
+    const latestStoreIndex = latestEvents.findIndex((e) => e.id === eventId);
+    const updatedEvents = [...latestEvents];
+    if (latestStoreIndex >= 0) {
+      updatedEvents[latestStoreIndex] = eventRecord;
     } else {
       updatedEvents.unshift(eventRecord);
     }

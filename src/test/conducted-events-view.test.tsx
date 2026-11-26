@@ -72,7 +72,7 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
       postMessage(msg: unknown) {
         postMessages.push(msg);
       }
-      close() {}
+      close() { }
     }
     // @ts-expect-error test spy for BroadcastChannel
     globalThis.BroadcastChannel = SpyBroadcastChannel;
@@ -294,5 +294,99 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
     expect(screen.queryByText(/submitter email/i)).toBeNull();
     expect(screen.queryByText(/resource person/i)).toBeNull();
     expect(screen.getByRole("button", { name: /delete event/i })).toBeTruthy();
+  });
+
+  it("immediately shows newly added Institutional and Student Forum events even if KV read returns stale empty array after submit", async () => {
+    if (typeof URL.createObjectURL !== "function") {
+      Object.defineProperty(URL, "createObjectURL", {
+        configurable: true,
+        writable: true,
+        value: vi.fn(() => "blob:mock-url"),
+      });
+    }
+
+    const instClub = forums.find((f) => f.slug === "institutional-events")!;
+    const techClub = forums[0]!;
+    const pdfFile = new File(["%PDF-1.4\ntest"], "event-report.pdf", { type: "application/pdf" });
+
+    // Case 1: Institutional Event (Annual day, AY:2023-24)
+    mockGetPublicForumEvents.mockResolvedValue([]);
+    mockSubmitStudentEvent.mockResolvedValue({
+      id: "inst-new-2023",
+      success: true,
+      editToken: "tok-inst",
+    });
+
+    const { container: instContainer } = render(
+      <ConductedEventsView
+        club={instClub}
+        forumName="Annual day"
+        forumSlug="annual-day--ay-2023-24"
+        academicYear="AY:2023-24"
+        isAdmin={false}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /add new event on annual day/i }));
+    fireEvent.change(screen.getByPlaceholderText(/national level hackathon/i), {
+      target: { value: "Annual Day Celebration 2024" },
+    });
+    const instDateInputs = instContainer.querySelectorAll('input[type="date"]');
+    fireEvent.change(instDateInputs[0]!, { target: { value: "2024-03-15" } });
+    fireEvent.change(instDateInputs[1]!, { target: { value: "2024-03-16" } });
+    const instReportInput = instContainer.querySelector('input[type="file"][accept*=".pdf"]')!;
+    fireEvent.change(instReportInput, { target: { files: [pdfFile] } });
+
+    fireEvent.submit(screen.getByRole("button", { name: /submit to admin/i }).closest("form")!);
+
+    expect(await screen.findByText(/event submitted to admin successfully!/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /done/i }));
+    expect(await screen.findByText("Annual Day Celebration 2024")).toBeTruthy();
+    expect(screen.queryByText(/no conducted events posted yet/i)).toBeNull();
+
+    cleanup();
+    localStorage.clear();
+
+    // Case 2: Student Forum (ISTE) with resource person & submitter details
+    mockGetPublicForumEvents.mockResolvedValue([]);
+    mockSubmitStudentEvent.mockResolvedValue({
+      id: "iste-new-2026",
+      success: true,
+      editToken: "tok-iste",
+    });
+
+    const { container: forumContainer } = render(
+      <ConductedEventsView
+        club={techClub}
+        forumName="ISTE"
+        forumSlug="iste"
+        isAdmin={false}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /add new event on iste/i }));
+    fireEvent.change(screen.getByPlaceholderText(/national level hackathon/i), {
+      target: { value: "ISTE AI Workshop" },
+    });
+    const forumDateInputs = forumContainer.querySelectorAll('input[type="date"]');
+    fireEvent.change(forumDateInputs[0]!, { target: { value: "2026-09-10" } });
+    fireEvent.change(forumDateInputs[1]!, { target: { value: "2026-09-11" } });
+    fireEvent.change(screen.getByPlaceholderText(/dr\. k\. radhika/i), {
+      target: { value: "Dr. R. Rao" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/ananya reddy/i), {
+      target: { value: "Ananya" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/gnits\.ac\.in/i), {
+      target: { value: "ananya@gnits.ac.in" },
+    });
+    const forumReportInput = forumContainer.querySelector('input[type="file"][accept*=".pdf"]')!;
+    fireEvent.change(forumReportInput, { target: { files: [pdfFile] } });
+
+    fireEvent.submit(screen.getByRole("button", { name: /submit to admin/i }).closest("form")!);
+
+    expect(await screen.findByText(/event submitted to admin successfully!/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /done/i }));
+    expect(await screen.findByText("ISTE AI Workshop")).toBeTruthy();
   });
 });

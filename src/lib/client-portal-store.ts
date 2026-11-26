@@ -12,7 +12,14 @@ export const EVENTS_KEY = "GNITS_EVENTS_PERSISTENT_DATA_V3";
 export const ADMIN_EVENTS_KEY = "GNITS_ADMIN_EVENTS_PERSISTENT_DATA_V3";
 const EVENT_EDIT_TOKENS_KEY = "GNITS_EVENT_EDIT_TOKENS_V1";
 export const DELETED_IDS_KEY = "GNITS_DELETED_ITEMS_TRACKER_V3";
+const RECENT_EVENT_SAVES_KEY = "GNITS_RECENT_EVENT_SAVES_V1";
+const RECENT_EVENT_SAVE_TTL_MS = 90_000;
 const SYNC_BROADCAST_CHANNEL = "gnits_portal_sync_channel";
+
+interface RecentEventSaveEntry {
+  savedAt: number;
+  expectedSig?: string | undefined;
+}
 
 export interface DeletedTracker {
   videoIds: string[];
@@ -340,6 +347,135 @@ export function deleteClientPhoto(photoId: string): void {
 // -------------------------------------------------------------
 // EVENTS SPECIFIC
 // -------------------------------------------------------------
+function getRecentEventSaveMap(): Record<string, RecentEventSaveEntry> {
+  if (!isClient()) return {};
+  try {
+    const raw = localStorage.getItem(RECENT_EVENT_SAVES_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, RecentEventSaveEntry>;
+    if (!parsed || typeof parsed !== "object") return {};
+
+    const now = Date.now();
+    const active: Record<string, RecentEventSaveEntry> = {};
+    let pruned = false;
+
+    for (const [id, entry] of Object.entries(parsed)) {
+      if (
+        entry &&
+        typeof entry.savedAt === "number" &&
+        now - entry.savedAt >= 0 &&
+        now - entry.savedAt < RECENT_EVENT_SAVE_TTL_MS
+      ) {
+        active[id] = entry;
+      } else {
+        pruned = true;
+      }
+    }
+
+    if (pruned) {
+      localStorage.setItem(RECENT_EVENT_SAVES_KEY, JSON.stringify(active));
+    }
+    return active;
+  } catch {
+    return {};
+  }
+}
+
+export function getRecentEventIds(): Set<string> {
+  return new Set(Object.keys(getRecentEventSaveMap()));
+}
+
+export function getDeletedEventIds(): string[] {
+  return getDeletedTracker().eventIds;
+}
+
+function markRecentEventSave(eventId: string, expectedSig?: string): void {
+  if (!isClient() || !eventId) return;
+  try {
+    const map = getRecentEventSaveMap();
+    const existing = map[eventId];
+    map[eventId] = {
+      savedAt: Date.now(),
+      expectedSig: expectedSig ?? existing?.expectedSig,
+    };
+    localStorage.setItem(RECENT_EVENT_SAVES_KEY, JSON.stringify(map));
+
+    // If an ID is explicitly saved again, clear any stale local delete marker
+    const tracker = getDeletedTracker();
+    if (tracker.eventIds.includes(eventId)) {
+      saveDeletedTracker({
+        ...tracker,
+        eventIds: tracker.eventIds.filter((id) => id !== eventId),
+      });
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function clearRecentEventSave(eventId: string): void {
+  if (!isClient() || !eventId) return;
+  try {
+    const map = getRecentEventSaveMap();
+    if (eventId in map) {
+      delete map[eventId];
+      localStorage.setItem(RECENT_EVENT_SAVES_KEY, JSON.stringify(map));
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function eventPublicSignature(ev: PublicEventRecord): string {
+  return `${ev.event_name.trim()}::${ev.event_start}::${ev.event_end}::${(ev.resource_persons ?? "").trim()}`;
+}
+
+function mergeServerEventsWithRecentLocal(
+  serverEvents: PublicEventRecord[],
+  recentLocalCandidates: PublicEventRecord[],
+  recentSaves: Record<string, RecentEventSaveEntry>,
+  deletedIds: Set<string>,
+): PublicEventRecord[] {
+  const sanitizedServer = serverEvents.filter((se) => !deletedIds.has(se.id));
+  const merged: PublicEventRecord[] = [];
+  const seenIds = new Set<string>();
+
+  // Preserve newly created or edited events within the KV propagation window
+  for (const localEv of recentLocalCandidates) {
+    if (deletedIds.has(localEv.id) || seenIds.has(localEv.id)) continue;
+    const recentEntry = recentSaves[localEv.id];
+    if (!recentEntry) continue;
+
+    const serverMatch = sanitizedServer.find((se) => se.id === localEv.id);
+    if (!serverMatch) {
+      merged.push(localEv);
+      seenIds.add(localEv.id);
+      continue;
+    }
+
+    const localSig = eventPublicSignature(localEv);
+    const serverSig = eventPublicSignature(serverMatch);
+    if (
+      recentEntry.expectedSig &&
+      serverSig !== recentEntry.expectedSig &&
+      localSig === recentEntry.expectedSig
+    ) {
+      merged.push(localEv);
+    } else {
+      merged.push(serverMatch);
+    }
+    seenIds.add(localEv.id);
+  }
+
+  for (const serverEv of sanitizedServer) {
+    if (seenIds.has(serverEv.id)) continue;
+    seenIds.add(serverEv.id);
+    merged.push(serverEv);
+  }
+
+  return merged;
+}
+
 export function getClientEvents(): PublicEventRecord[] {
   if (!isClient()) return [];
   try {
@@ -360,6 +496,7 @@ export function saveClientEvent(
 ): void {
   if (!isClient()) return;
   try {
+    markRecentEventSave(event.id, eventPublicSignature(event));
     const current = getClientEvents();
     const existingIdx = current.findIndex((e) => e.id === event.id);
     if (existingIdx >= 0 && JSON.stringify(current[existingIdx]) === JSON.stringify(event)) {
@@ -382,12 +519,19 @@ export function saveClientEvent(
   }
 }
 
-export function syncClientEvents(events: PublicEventRecord[]): void {
-  if (!isClient()) return;
+export function syncClientEvents(events: PublicEventRecord[]): PublicEventRecord[] {
+  if (!isClient()) return events;
   try {
-    localStorage.setItem(EVENTS_KEY, JSON.stringify(events));
+    const reconciled = mergeServerEventsWithRecentLocal(
+      events,
+      getClientEvents(),
+      getRecentEventSaveMap(),
+      new Set(getDeletedTracker().eventIds),
+    );
+    localStorage.setItem(EVENTS_KEY, JSON.stringify(reconciled));
+    return reconciled;
   } catch {
-    // ignore
+    return events;
   }
 }
 
@@ -395,15 +539,26 @@ export function syncClientForumEvents(
   clubSlug: string,
   forumSlug: string,
   forumEvents: PublicEventRecord[],
-): void {
-  if (!isClient()) return;
+): PublicEventRecord[] {
+  if (!isClient()) return forumEvents;
   try {
-    const others = getClientEvents().filter(
+    const allLocal = getClientEvents();
+    const localForum = allLocal.filter(
+      (e) => e.club_slug === clubSlug && e.forum_slug === forumSlug,
+    );
+    const others = allLocal.filter(
       (e) => !(e.club_slug === clubSlug && e.forum_slug === forumSlug),
     );
-    localStorage.setItem(EVENTS_KEY, JSON.stringify([...forumEvents, ...others]));
+    const reconciledForum = mergeServerEventsWithRecentLocal(
+      forumEvents,
+      localForum,
+      getRecentEventSaveMap(),
+      new Set(getDeletedTracker().eventIds),
+    );
+    localStorage.setItem(EVENTS_KEY, JSON.stringify([...reconciledForum, ...others]));
+    return reconciledForum;
   } catch {
-    // ignore
+    return forumEvents;
   }
 }
 
@@ -434,6 +589,7 @@ export function saveEventEditToken(eventId: string, token: string): void {
 export function deleteClientEvent(eventId: string): void {
   if (!isClient()) return;
   try {
+    clearRecentEventSave(eventId);
     const tracker = getDeletedTracker();
     if (!tracker.eventIds.includes(eventId)) {
       tracker.eventIds.push(eventId);
@@ -471,6 +627,7 @@ export function saveClientAdminEvent(
 ): void {
   if (!isClient()) return;
   try {
+    markRecentEventSave(event.id);
     const current = getClientAdminEvents();
     const existingIdx = current.findIndex((e) => e.id === event.id);
     if (existingIdx >= 0 && JSON.stringify(current[existingIdx]) === JSON.stringify(event)) {
@@ -496,6 +653,7 @@ export function saveClientAdminEvent(
 export function deleteClientAdminEvent(eventId: string): void {
   if (!isClient()) return;
   try {
+    clearRecentEventSave(eventId);
     const tracker = getDeletedTracker();
     if (!tracker.eventIds.includes(eventId)) {
       tracker.eventIds.push(eventId);

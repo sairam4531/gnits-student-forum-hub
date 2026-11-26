@@ -151,8 +151,8 @@ function StudentAffairsPortalPage() {
 
         const events = await getAllPublicEventsServerFn();
         if (Array.isArray(events)) {
-          syncClientEvents(events);
-          setRecentEvents(events);
+          const reconciled = syncClientEvents(events);
+          setRecentEvents(reconciled);
         }
 
         if (!homeData?.photos?.length) {
