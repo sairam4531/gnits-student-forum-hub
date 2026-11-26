@@ -98,7 +98,7 @@ describe("IT-Admin & Admin Portal Dashboards", () => {
     });
   });
 
-  it("displays category-scoped Admin dashboard on /admin with read-only showcase and club manage link", async () => {
+  it("displays category-scoped Admin dashboard on /admin with read-only showcase and sidebar navigation/logout", async () => {
     vi.mocked(getAdminSessionServerFn).mockResolvedValueOnce({
       authenticated: true,
       username: "gnitstechnical",
@@ -113,9 +113,16 @@ describe("IT-Admin & Admin Portal Dashboards", () => {
 
     render(<AdminComponent />);
 
-    expect(await screen.findByRole("button", { name: /manage technical clubs/i })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: /^dean details$/i })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: /^dean details$/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /edit video/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /manage technical clubs/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /all events & clubs/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /sign out/i })).toBeNull();
+
+    // Opening the sidebar reveals events navigation, scoped account info, and Sign Out button
+    fireEvent.click(screen.getByRole("button", { name: /open available events & clubs menu/i }));
+    expect(await screen.findByText("Technical Events Admin")).toBeTruthy();
+    expect(screen.getByTitle("Sign Out")).toBeTruthy();
   });
 
   it("does not display or auto-fill credentials on /it-admin or /admin login pages", async () => {

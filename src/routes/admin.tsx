@@ -8,15 +8,11 @@ import {
   EyeOff,
   Loader2,
   AlertCircle,
-  Menu,
-  LogOut,
-  FolderKanban,
 } from "lucide-react";
 import { StudentAffairsHeader } from "@/components/StudentAffairsHeader";
 import { EventsClubsDrawer } from "@/components/EventsClubsDrawer";
 import { LoopVideoShowcase } from "@/components/LoopVideoShowcase";
 import { DeanDetailsCard } from "@/components/DeanDetailsCard";
-import { forums, toSlug } from "@/lib/student-forums";
 import {
   adminLoginServerFn,
   getAdminSessionServerFn,
@@ -293,7 +289,6 @@ function AdminPage() {
     );
   }
 
-  const assignedClub = forums.find((f) => f.slug === allowedClubSlug) || forums[0]!;
   const resolvedData = homepageData ?? getClientHomepageData();
   const currentDean = resolvedData.dean;
   const allVideosList = resolvedData.videos;
@@ -317,70 +312,6 @@ function AdminPage() {
       />
 
       <main className="flex-1 bg-white pb-6">
-        {/* Category Admin Action Bar */}
-        <section className="w-full bg-slate-50 border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-4">
-          <div className="w-full flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="h-11 w-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
-                <FolderKanban className="h-6 w-6" />
-              </div>
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-extrabold uppercase tracking-wider text-primary">
-                    {roleLabel}
-                  </span>
-                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full">
-                    {assignedClub.name}
-                  </span>
-                </div>
-                <p className="text-xs sm:text-sm text-slate-600 mt-1">
-                  Upload and edit events for <strong>{assignedClub.name}</strong> to submit to IT-Admin, or browse reports, documents, and photos across all portal events.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2.5">
-              <button
-                type="button"
-                onClick={() => {
-                  const defaultForum = assignedClub.forums[0]!;
-                  navigate({
-                    to: "/events",
-                    search: {
-                      club: assignedClub.slug,
-                      forum: defaultForum,
-                      slug: toSlug(defaultForum),
-                      mode: "admin",
-                    },
-                  });
-                }}
-                className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs sm:text-sm font-bold text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors cursor-pointer"
-              >
-                <FolderKanban className="h-4 w-4" />
-                <span>Manage {assignedClub.name}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsDrawerOpen(true)}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs sm:text-sm font-bold text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <Menu className="h-4 w-4" />
-                <span>All Events &amp; Clubs</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-xs sm:text-sm font-bold text-rose-700 hover:bg-rose-100 transition-colors cursor-pointer"
-              >
-                <LogOut className="h-4 w-4" />
-                <span>Sign Out</span>
-              </button>
-            </div>
-          </div>
-        </section>
-
         {/* Read-only Homepage Dashboard Preview */}
         <section
           aria-label="Campus Loop Video Showcase"

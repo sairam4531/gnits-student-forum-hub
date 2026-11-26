@@ -27,6 +27,7 @@ import {
 } from "@/lib/events.functions";
 import {
   getAdminSessionServerFn,
+  adminLogoutServerFn,
   getAdminProfileServerFn,
   getAllAdminEventsServerFn,
   type AdminProfileRecord,
@@ -263,6 +264,20 @@ function DedicatedEventPage() {
     }
   };
 
+  const handleSignOut = async () => {
+    const targetRoute = isItAdmin ? "/it-admin" : "/admin";
+    try {
+      await adminLogoutServerFn();
+    } catch (err) {
+      console.warn("Logout note:", err);
+    }
+    setSessionRole(null);
+    setAllowedClubSlug(null);
+    setRoleLabel(null);
+    setAdminProfile(null);
+    navigate({ to: targetRoute });
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans antialiased selection:bg-[#2563eb]/20">
       {/* 1. Header with Scrolling Welcome & 3-lines menu */}
@@ -469,6 +484,7 @@ function DedicatedEventPage() {
         {...(roleLabel ? { portalLabel: roleLabel } : {})}
         isAdmin={isItAdmin}
         {...(isItAdmin ? { adminProfile, onExportMasterExcel: handleExportMasterExcel } : {})}
+        {...(isPrivileged ? { onSignOut: handleSignOut } : {})}
         recentEvents={recentEvents}
       />
 
