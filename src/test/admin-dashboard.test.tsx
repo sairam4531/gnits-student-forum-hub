@@ -113,7 +113,9 @@ describe("IT-Admin & Admin Portal Dashboards", () => {
 
     render(<AdminComponent />);
 
-    expect(await screen.findByRole("heading", { name: /^dean details$/i })).toBeTruthy();
+    expect(
+      await screen.findByRole("heading", { name: /dean - student affairs profile/i }),
+    ).toBeTruthy();
     expect(screen.queryByRole("button", { name: /edit video/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /manage technical clubs/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /all events & clubs/i })).toBeNull();

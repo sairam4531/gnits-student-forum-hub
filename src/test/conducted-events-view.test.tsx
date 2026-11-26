@@ -184,7 +184,7 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
       );
 
       expect(
-        screen.getByText(
+        await screen.findByText(
           portalMode === "it-admin"
             ? "IT-Admin Affairs Portal"
             : portalMode === "admin"
@@ -194,7 +194,7 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
       ).toBeTruthy();
 
       // Click an institutional event ("Annual day") — navigates directly with no AY list in sidebar
-      fireEvent.click(await screen.findByRole("button", { name: /annual day/i }));
+      fireEvent.click(screen.getByRole("button", { name: /annual day/i }));
       for (const ay of [
         "AY:2023-24",
         "AY:2024-25",
@@ -244,7 +244,7 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
 
     expect(screen.queryByText(/resource person names/i)).toBeNull();
     expect(screen.queryByText(/submitter name/i)).toBeNull();
-    expect(screen.queryByText(/submitter student email/i)).toBeNull();
+    expect(screen.queryByText(/submitter email/i)).toBeNull();
     expect(screen.getByText(/event name \*/i)).toBeTruthy();
 
     cleanup();
@@ -268,7 +268,7 @@ describe("ConductedEventsView Loading & Cross-Tab Sync", () => {
 
     expect(screen.getByText(/resource person names/i)).toBeTruthy();
     expect(screen.getByText(/submitter name/i)).toBeTruthy();
-    expect(screen.getByText(/submitter student email/i)).toBeTruthy();
+    expect(screen.getByText(/submitter email/i)).toBeTruthy();
   });
 
   it("hides empty submitter/resource cards in AdminEventsView for institutional events", async () => {
